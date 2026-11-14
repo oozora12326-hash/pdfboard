@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PDF & Image Sync Board - フルスクリーンビューア対応</title>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PDF Board">
+  <link rel="apple-touch-icon" href="./icon-512.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+  <style>
+    html, body {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    .canvas-container {
+      touch-action: pan-x pan-y pinch-zoom;
+    }
+    #passwordModal, input, button, select {
+      touch-action: manipulation;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans">
+
+  <!-- Password Protection Modal -->
+  <div id="passwordModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+      <div class="text-center space-y-1">
+        <span class="text-3xl">🔒</span>
+        <h2 class="font-bold text-lg text-white">パスワード認証</h2>
+        <p class="text-xs text-slate-400">このワークスペースに入るためのパスワードを入力してください</p>
+      </div>
+      <form id="passwordForm" class="space-y-3">
+        <input type="password" id="roomPasswordInput" placeholder="パスワードを入力" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+        <p id="passwordError" class="text-xs text-red-400 hidden text-center">パスワードが間違っています</p>
+        <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
+          入室する
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- App Main Container -->
+  <div id="appContainer" class="flex-1 flex flex-col overflow-hidden relative">
+    <!-- Top Header -->
+    <header class="h-14 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between shrink-0 z-20">
+      <div class="flex items-center gap-2.5">
+        <button id="toggleSidebarBtn" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200" title="サイドバー切替">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="flex items-center gap-2">
+          <span class="bg-blue-600 text-white font-bold px-2 py-0.5 rounded text-sm">PDF/IMG</span>
+          <h1 class="font-bold text-base tracking-tight hidden sm:block">Sync Board</h1>
+        </div>
+        <span id="syncStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span>ローカル</span>
+        </span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="shareRoomBtn" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow">
+          <span>🔗</span><span class="hidden sm:inline">URL共有</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Body -->
+    <div class="flex-1 flex overflow-hidden relative">
+      <!-- Left Sidebar (Folders & Files) -->
+      <aside id="sidebar" class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-200 z-10">
+        <div class="p-3 border-b border-slate-800 flex flex-col gap-2">
+          <button id="addImageDocBtn" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
+            <span>📷 PNG / 画像ファイルを追加</span>
+          </button>
+          <button id="addUrlDocBtn" class="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
+            <span>＋ クラウドURLからPDF追加</span>
+          </button>
+          <input type="file" id="localImageInput" accept="image/png, image/jpeg, image/webp" class="hidden" />
+          <div class="flex gap-1.5">
+            <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
+              <span>📁</span><span>新規フォルダ</span>
+            </button>
+            <button id="firebaseSetupInfoBtn" class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700" title="Firestore同期設定">
+              ⚙️
+            </button>
+          </div>
+        </div>
+
+        <!-- Folder & Document Tree -->
+        <div id="folderListContainer" class="flex-1 overflow-y-auto p-2 space-y-2">
+          <!-- Rendered by JS -->
+        </div>
+
+        <div class="p-2.5 border-t border-slate-800 text-[11px] text-slate-400 flex justify-between items-center bg-slate-900/80">
+          <span id="roomLabel">Room: default</span>
+          <span id="docCountLabel">0 ファイル</span>
+        </div>
+      </aside>
+
+      <!-- Workspace Home / Guide -->
+      <main id="mainWorkspaceArea" class="flex-1 bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-400 space-y-3">
+        <div class="text-5xl">📂</div>
+        <h2 class="text-lg font-bold text-white">図面を選択してください</h2>
+        <p class="text-xs max-w-sm leading-relaxed">左側のファイル一覧から確認したいPDFやPNG画像をタップすると、専用のフルスクリーン編集画面にジャンプします。</p>
+      </main>
+    </div>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    const APP_PASSWORD = "1234";
+
+    const FIREBASE_CONFIG = {
+      apiKey: "",
+      authDomain: "",
+      projectId: "",
+      storageBucket: "",
+      messagingSenderId: "",
+      appId: ""
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (sessionStorage.getItem('auth_passed') === 'true') {
+        document.getElementById('passwordModal').style.display = 'none';
+        initApp();
+      }
+    });
+
+    document.getElementById('passwordForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inputVal = document.getElementById('roomPasswordInput').value;
+      if (inputVal === APP_PASSWORD) {
+        sessionStorage.setItem('auth_passed', 'true');
+        document.getElementById('passwordModal').style.display = 'none';
+        initApp();
+      } else {
+        document.getElementById('passwordError').classList.remove('hidden');
+      }
+    });
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const ROOM_ID = urlParams.get('room') || 'default-room';
+    document.getElementById('roomLabel').textContent = `Room: ${ROOM_ID}`;
+
+    let db = null;
+    let isCloudMode = false;
+
+    function initApp() {
+      if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId) {
+        try {
+          firebase.initializeApp(FIREBASE_CONFIG);
+          db = firebase.firestore();
+          isCloudMode = true;
+          const badge = document.getElementById('syncStatusBadge');
+          badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5";
+          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>クラウド</span>`;
+        } catch (e) {
+          console.error("Firebase init failed:", e);
+        }
+      }
+      initCloudListeners();
+    }
+
+    const state = {
+      folders: [
+        { id: 'folder-default', name: '未分類・図面一式', collapsed: false }
+      ],
+      documents: [],
+      annotations: {}
+    };
+
+    function createSampleDoc() {
+      const sampleId = 'sample-plan-01';
+      if (!state.documents.find(d => d.id === sampleId)) {
+        state.documents.push({
+          id: sampleId,
+          name: 'サンプル平面図_1F.pdf',
+          folderId: 'folder-default',
+          type: 'sample',
+          numPages: 2
+        });
+      }
+    }
+
+    function initCloudListeners() {
+      if (!isCloudMode) {
+        createSampleDoc();
+        renderSidebar();
+        return;
+      }
+
+      const roomRef = db.collection('rooms').doc(ROOM_ID);
+
+      roomRef.collection('folders').orderBy('createdAt').onSnapshot(snap => {
+        const list = [{ id: 'folder-default', name: '未分類・図面一式', collapsed: false }];
+        snap.forEach(doc => {
+          const d = doc.data();
+          const existing = state.folders.find(f => f.id === doc.id);
+          list.push({ id: doc.id, name: d.name, collapsed: existing ? existing.collapsed : false });
+        });
+        state.folders = list;
+        renderSidebar();
+      });
+
+      roomRef.collection('documents').orderBy('createdAt').onSnapshot(async snap => {
+        for (const change of snap.docChanges()) {
+          const data = change.doc.data();
+          const docId = change.doc.id;
+          if (change.type === 'added') {
+            if (!state.documents.find(d => d.id === docId)) {
+              let pdfUrl = data.url || '';
+              if (pdfUrl.includes('drive.google.com')) {
+                const match = pdfUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                if (match && match[1]) {
+                  pdfUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
+                }
+              }
+
+              state.documents.push({
+                id: docId,
+                name: data.name,
+                folderId: data.folderId || 'folder-default',
+                type: data.type || 'pdf',
+                url: pdfUrl,
+                dataUrl: data.dataUrl || null,
+                numPages: 1
+              });
+            }
+          } else if (change.type === 'modified') {
+            const target = state.documents.find(d => d.id === docId);
+            if (target) {
+              target.folderId = data.folderId;
+              target.name = data.name;
+            }
+          } else if (change.type === 'removed') {
+            state.documents = state.documents.filter(d => d.id !== docId);
+          }
+        }
+        renderSidebar();
+      });
+    }
+
+    document.getElementById('createFolderBtn').addEventListener('click', async () => {
+      const name = prompt('新しいフォルダ名を入力してください:', '施工図・電気設備');
+      if (!name || !name.trim()) return;
+      if (isCloudMode) {
+        await db.collection('rooms').doc(ROOM_ID).collection('folders').add({
+          name: name.trim(),
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        state.folders.push({ id: 'folder-' + Date.now(), name: name.trim(), collapsed: false });
+        renderSidebar();
+      }
+    });
+
+    async function moveDocToFolder(docId, folderId) {
+      if (isCloudMode) {
+        await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(docId).update({ folderId });
+      } else {
+        const doc = state.documents.find(d => d.id === docId);
+        if (doc) doc.folderId = folderId;
+        renderSidebar();
+      }
+    }
+
+    document.getElementById('addImageDocBtn').addEventListener('click', () => {
+      document.getElementById('localImageInput').click();
+    });
+
+    document.getElementById('localImageInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const dataUrl = event.target.result;
+        const docName = file.name;
+
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
+            name: docName,
+            folderId: 'folder-default',
+            type: 'image',
+            dataUrl: dataUrl,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          const newId = 'doc-img-' + Date.now();
+          state.documents.push({
+            id: newId,
+            name: docName,
+            folderId: 'folder-default',
+            type: 'image',
+            dataUrl: dataUrl,
+            numPages: 1
+          });
+          renderSidebar();
+        }
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    });
+
+    document.getElementById('addUrlDocBtn').addEventListener('click', async () => {
+      const docName = prompt('図面のファイル名（例: 2階配線図.pdf）を入力してください:', '建築平面図.pdf');
+      if (!docName || !docName.trim()) return;
+
+      const urlInput = prompt('GoogleドライブなどのPDF共有リンク（URL）を貼り付けてください:', 'https://drive.google.com/file/d/...');
+      if (!urlInput || !urlInput.trim()) return;
+
+      let rawUrl = urlInput.trim();
+      if (rawUrl.includes('drive.google.com')) {
+        const match = rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+          rawUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
+        }
+      }
+
+      if (isCloudMode) {
+        await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
+          name: docName.trim(),
+          folderId: 'folder-default',
+          type: 'pdf',
+          url: rawUrl,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        const newId = 'doc-' + Date.now();
+        state.documents.push({
+          id: newId,
+          name: docName.trim(),
+          folderId: 'folder-default',
+          type: 'pdf',
+          url: rawUrl,
+          numPages: 1
+        });
+        renderSidebar();
+      }
+    });
+
+    function renderSidebar() {
+      const container = document.getElementById('folderListContainer');
+      container.innerHTML = '';
+      document.getElementById('docCountLabel').textContent = `${state.documents.length} ファイル`;
+
+      state.folders.forEach(folder => {
+        const docsInFolder = state.documents.filter(d => d.folderId === folder.id);
+        const folderEl = document.createElement('div');
+        folderEl.className = 'bg-slate-800/60 border border-slate-800 rounded-xl overflow-hidden';
+
+        folderEl.addEventListener('dragover', e => {
+          e.preventDefault();
+          folderEl.classList.add('border-blue-500');
+        });
+        folderEl.addEventListener('dragleave', () => folderEl.classList.remove('border-blue-500'));
+        folderEl.addEventListener('drop', e => {
+          e.preventDefault();
+          folderEl.classList.remove('border-blue-500');
+          const draggedDocId = e.dataTransfer.getData('text/plain');
+          if (draggedDocId) moveDocToFolder(draggedDocId, folder.id);
+        });
+
+        const header = document.createElement('div');
+        header.className = 'px-3 py-2.5 bg-slate-800 flex items-center justify-between cursor-pointer text-xs font-semibold text-slate-200';
+        header.innerHTML = `
+          <div class="flex items-center gap-2 truncate">
+            <span>${folder.collapsed ? '📁' : '📂'}</span>
+            <span class="truncate">${folder.name}</span>
+            <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded-full text-slate-300">${docsInFolder.length}</span>
+          </div>
+        `;
+        header.addEventListener('click', () => {
+          folder.collapsed = !folder.collapsed;
+          renderSidebar();
+        });
+        folderEl.appendChild(header);
+
+        if (!folder.collapsed) {
+          const listEl = document.createElement('div');
+          listEl.className = 'p-2 space-y-2';
+
+          if (docsInFolder.length === 0) {
+            listEl.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-2">ファイルをドラッグして移動</div>`;
+          }
+
+          docsInFolder.forEach(doc => {
+            const item = document.createElement('div');
+            item.draggable = true;
+            item.className = 'p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800/80 border border-slate-700/80 flex flex-col gap-2 transition cursor-pointer shadow-sm';
+            item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', doc.id));
+
+            const folderOptions = state.folders.map(f =>
+              `<option value="${f.id}" ${f.id === doc.folderId ? 'selected' : ''}>📁 ${f.name}</option>`
+            ).join('');
+
+            const icon = doc.type === 'image' ? '🖼️' : '📄';
+
+            item.innerHTML = `
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-xs font-bold text-slate-100 truncate flex-1">${icon} ${doc.name}</span>
+                <span class="text-[11px] bg-blue-600 text-white px-2 py-0.5 rounded font-semibold">開く ➔</span>
+                <button class="delete-doc-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0 ml-1" title="削除">🗑️</button>
+              </div>
+              <select class="move-folder-select w-full bg-slate-950 text-[10px] text-slate-400 rounded px-1.5 py-1 border border-slate-800">
+                ${folderOptions}
+              </select>
+            `;
+
+            item.addEventListener('click', (e) => {
+              if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.classList.contains('delete-doc-btn')) return;
+              openViewer(doc.id);
+            });
+
+            item.querySelector('.move-folder-select').addEventListener('change', e => {
+              moveDocToFolder(doc.id, e.target.value);
+            });
+
+            item.querySelector('.delete-doc-btn').addEventListener('click', async (e) => {
+              e.stopPropagation();
+              if (!confirm(`「${doc.name}」を削除してもよろしいですか？`)) return;
+              if (isCloudMode) {
+                await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(doc.id).delete();
+              } else {
+                state.documents = state.documents.filter(d => d.id !== doc.id);
+                renderSidebar();
+              }
+            });
+
+            listEl.appendChild(item);
+          });
+
+          folderEl.appendChild(listEl);
+        }
+
+        container.appendChild(folderEl);
+      });
+    }
+
+    // =========================================================================
+    // ビューア画面
+    // =========================================================================
+    async function openViewer(docId) {
+      const doc = state.documents.find(d => d.id === docId);
+      if (!doc) return;
+
+      document.body.innerHTML = `
+        <div id="viewerApp" class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
+          <!-- ヘッダー（ページ送り・ズームコントロールをヘッダー内にまとめてスッキリ配置） -->
+          <header class="h-12 bg-slate-900 border-b border-slate-800 px-2 sm:px-3 flex items-center justify-between shrink-0 z-20 gap-1 overflow-x-auto">
+            <div class="flex items-center gap-1.5 min-w-0 shrink-0">
+              <button id="backToListBtn" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow shrink-0">
+                <span>◀</span><span class="hidden xs:inline">一覧</span>
+              </button>
+              <h2 class="text-xs font-bold text-slate-200 truncate max-w-[100px] sm:max-w-[180px]">📄 ${doc.name}</h2>
+            </div>
+
+            <div class="flex items-center gap-1.5 shrink-0">
+              <!-- ページ送り -->
+              <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
+                <button id="prevPageBtn" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold">◀</button>
+                <span id="pageIndicator" class="text-[11px] font-mono text-slate-300 whitespace-nowrap">1/1</span>
+                <button id="nextPageBtn" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold">▶</button>
+              </div>
+              <!-- ズームコントロール -->
+              <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
+                <button id="zoomOutBtn" class="w-6 h-6 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-bold flex items-center justify-center">－</button>
+                <span id="scaleLabel" class="text-[11px] font-bold text-emerald-400 w-9 text-center whitespace-nowrap">60%</span>
+                <button id="zoomInBtn" class="w-6 h-6 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-bold flex items-center justify-center">＋</button>
+              </div>
+            </div>
+          </header>
+
+          <!-- キャンバス領域 -->
+          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative flex flex-col items-center justify-start bg-slate-950/90 p-8">
+            <div id="canvasWrapper" class="relative shadow-2xl bg-white my-auto" style="transform: scale(0.6); transform-origin: top center;">
+              <canvas id="pdfCanvas" class="block"></canvas>
+              <canvas id="drawCanvas" class="absolute inset-0"></canvas>
+            </div>
+          </div>
+
+          <!-- ツールバー（縦・横画面の向きに合わせて自動で位置を切り替え） -->
+          <div id="floatingToolbar" class="absolute z-30 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-1.5">
+            <button id="undoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="元に戻る">↩️</button>
+            <button id="redoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="やり直し">🔁</button>
+            <div id="tbDivider1" class="bg-slate-700"></div>
+            <button data-tool="pan" class="tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow" title="移動・スクロール">✋</button>
+            <button data-tool="pen" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="ペン">✏️</button>
+            <button data-tool="marker" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="マーカー">🖍️</button>
+            <button data-tool="rect" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="四角枠">⬜</button>
+            <button data-tool="text" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="テキスト">🔤</button>
+            <button id="addPhotoBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="写真貼り付け">📷</button>
+            <input type="file" id="photoFileInput" accept="image/*" class="hidden" />
+            <button data-tool="eraser" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="消しゴム">🧹</button>
+            <div id="tbDivider2" class="bg-slate-700"></div>
+            <input type="color" id="colorPicker" value="#ef4444" class="w-7 h-7 rounded-md cursor-pointer bg-transparent border-0 p-0" title="色選択" />
+            <select id="lineWidthSelect" class="bg-slate-950 text-[10px] text-slate-200 rounded-md px-1 py-1 border border-slate-700 text-center w-8">
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="4">4</option>
+              <option value="8">8</option>
+            </select>
+          </div>
+        </div>
+      `;
+
+      // 画面の向き（縦・横）に応じてツールバーの位置を切り替える関数
+      function updateToolbarPosition() {
+        const toolbar = document.getElementById('floatingToolbar');
+        const div1 = document.getElementById('tbDivider1');
+        const div2 = document.getElementById('tbDivider2');
+        if (!toolbar) return;
+
+        const isLandscape = window.innerWidth > window.innerHeight;
+
+        if (isLandscape) {
+          // 横画面のとき：右下にコンパクトな横並びで配置
+          toolbar.className = "absolute right-4 bottom-4 z-30 bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-1.5";
+          if (div1) { div1.className = "w-px h-6 bg-slate-700 mx-0.5"; }
+          if (div2) { div2.className = "w-px h-6 bg-slate-700 mx-0.5"; }
+        } else {
+          // 縦画面のとき：右側に縦並びで配置
+          toolbar.className = "absolute right-3 top-16 z-30 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl flex flex-col gap-1.5 items-center";
+          if (div1) { div1.className = "w-6 h-px bg-slate-700 my-0.5"; }
+          if (div2) { div2.className = "w-6 h-px bg-slate-700 my-0.5"; }
+        }
+      }
+
+      window.addEventListener('resize', updateToolbarPosition);
+      window.addEventListener('orientationchange', updateToolbarPosition);
+      updateToolbarPosition();
+
+      document.getElementById('backToListBtn').addEventListener('click', () => {
+        location.reload();
+      });
+
+      initViewerLogic(doc);
+    }
+
+    async function initViewerLogic(doc) {
+      let currentPage = 1;
+      let currentScale = 0.6;
+      let activeTool = 'pan';
+      let currentColor = '#ef4444';
+      let currentWidth = 1;
+      let pdfDocInstance = null;
+      let annotations = state.annotations;
+      let redoStack = [];
+
+      const pdfCanvas = document.getElementById('pdfCanvas');
+      const drawCanvas = document.getElementById('drawCanvas');
+      const pdfCtx = pdfCanvas.getContext('2d');
+      const wrapper = document.getElementById('canvasWrapper');
+
+      async function renderPage() {
+        if (doc.type === 'sample') {
+          pdfCanvas.width = 800;
+          pdfCanvas.height = 1100;
+          drawCanvas.width = 800;
+          drawCanvas.height = 1100;
+          pdfCtx.fillStyle = '#ffffff';
+          pdfCtx.fillRect(0, 0, 800, 1100);
+          pdfCtx.strokeStyle = '#334155';
+          pdfCtx.lineWidth = 3;
+          pdfCtx.strokeRect(50, 50, 700, 1000);
+          pdfCtx.fillStyle = '#0f172a';
+          pdfCtx.font = 'bold 24px sans-serif';
+          pdfCtx.fillText(`サンプル建築平面図 - ${currentPage}階`, 80, 100);
+          pdfCtx.strokeRect(100, 160, 280, 240);
+          pdfCtx.strokeRect(380, 160, 320, 240);
+          pdfCtx.fillText('会議室 A', 180, 285);
+          pdfCtx.fillText('執務スペース', 480, 285);
+          document.getElementById('pageIndicator').textContent = `${currentPage}/2`;
+          drawOverlay();
+          return;
+        }
+
+        if (doc.type === 'image') {
+          const img = new Image();
+          img.onload = () => {
+            pdfCanvas.width = img.width;
+            pdfCanvas.height = img.height;
+            drawCanvas.width = img.width;
+            drawCanvas.height = img.height;
+            pdfCtx.drawImage(img, 0, 0);
+            document.getElementById('pageIndicator').textContent = `1/1`;
+            drawOverlay();
+          };
+          img.src = doc.dataUrl;
+          return;
+        }
+
+        if (doc.type === 'pdf') {
+          try {
+            if (!pdfDocInstance) {
+              pdfDocInstance = await pdfjsLib.getDocument(doc.url).promise;
+              doc.numPages = pdfDocInstance.numPages;
+            }
+            const page = await pdfDocInstance.getPage(currentPage);
+            const viewport = page.getViewport({ scale: 1.5 });
+            pdfCanvas.width = viewport.width;
+            pdfCanvas.height = viewport.height;
+            drawCanvas.width = viewport.width;
+            drawCanvas.height = viewport.height;
+            await page.render({ canvasContext: pdfCtx, viewport }).promise;
+            document.getElementById('pageIndicator').textContent = `${currentPage}/${doc.numPages}`;
+            drawOverlay();
+          } catch (err) {
+            console.error(err);
+            pdfCtx.fillStyle = '#1e293b';
+            pdfCtx.fillRect(0, 0, 600, 800);
+            pdfCtx.fillStyle = '#ef4444';
+            pdfCtx.font = '16px sans-serif';
+            pdfCtx.textAlign = 'center';
+            pdfCtx.fillText('PDFの読み込みに失敗しました', 300, 400);
+          }
+        }
+      }
+
+      function drawOverlay() {
+        const ctx = drawCanvas.getContext('2d');
+        ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        const key = `${doc.id}_p${currentPage}`;
+        const strokes = annotations[key] || [];
+
+        strokes.forEach(s => {
+          ctx.save();
+          if (s.tool === 'image' && s.imgElement) {
+            ctx.drawImage(s.imgElement, s.x, s.y, s.width, s.height);
+          } else {
+            ctx.strokeStyle = s.color;
+            ctx.fillStyle = s.color;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (s.tool === 'pen' || s.tool === 'marker') {
+              ctx.globalAlpha = s.tool === 'marker' ? 0.35 : 1.0;
+              ctx.lineWidth = s.tool === 'marker' ? s.width * 4 : s.width;
+              ctx.beginPath();
+              s.points.forEach((pt, idx) => idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+              ctx.stroke();
+            } else if (s.tool === 'rect') {
+              ctx.lineWidth = s.width;
+              ctx.strokeRect(s.startX, s.startY, s.endX - s.startX, s.endY - s.startY);
+            } else if (s.tool === 'text') {
+              ctx.font = `bold ${Math.max(16, s.width * 4)}px sans-serif`;
+              ctx.fillText(s.text, s.x, s.y);
+            }
+          }
+          ctx.restore();
+        });
+      }
+
+      async function saveAndRedraw(stroke) {
+        const key = `${doc.id}_p${currentPage}`;
+        if (!annotations[key]) annotations[key] = [];
+        redoStack = [];
+        stroke.id = 'st-' + Date.now() + Math.random();
+        annotations[key].push(stroke);
+        drawOverlay();
+      }
+
+      document.getElementById('prevPageBtn').addEventListener('click', () => {
+        if (currentPage > 1) { currentPage--; renderPage(); }
+      });
+      document.getElementById('nextPageBtn').addEventListener('click', () => {
+        const max = doc.type === 'sample' ? 2 : (doc.numPages || 1);
+        if (currentPage < max) { currentPage++; renderPage(); }
+      });
+
+      // 10% (0.1) ずつズーム変更
+      document.getElementById('zoomInBtn').addEventListener('click', () => {
+        currentScale = Math.min(3.0, +(currentScale + 0.1).toFixed(2));
+        wrapper.style.transform = `scale(${currentScale})`;
+        document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
+      });
+      document.getElementById('zoomOutBtn').addEventListener('click', () => {
+        currentScale = Math.max(0.3, +(currentScale - 0.1).toFixed(2));
+        wrapper.style.transform = `scale(${currentScale})`;
+        document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
+      });
+
+      document.getElementById('undoBtn').addEventListener('click', () => {
+        const key = `${doc.id}_p${currentPage}`;
+        const strokes = annotations[key];
+        if (!strokes || strokes.length === 0) return;
+        redoStack.push(strokes.pop());
+        drawOverlay();
+      });
+      document.getElementById('redoBtn').addEventListener('click', () => {
+        const key = `${doc.id}_p${currentPage}`;
+        if (redoStack.length === 0) return;
+        if (!annotations[key]) annotations[key] = [];
+        annotations[key].push(redoStack.pop());
+        drawOverlay();
+      });
+
+      document.getElementById('addPhotoBtn').addEventListener('click', () => document.getElementById('photoFileInput').click());
+      document.getElementById('photoFileInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxW = 200;
+            saveAndRedraw({
+              tool: 'image',
+              imgElement: img,
+              x: 100,
+              y: 100,
+              width: maxW,
+              height: img.height * (maxW / img.width)
+            });
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+      });
+
+      document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeTool = btn.dataset.tool;
+          document.querySelectorAll('.tool-btn').forEach(b => {
+            b.className = b === btn
+              ? 'tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow'
+              : 'tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800';
+          });
+          updateTouchAction();
+        });
+      });
+
+      function updateTouchAction() {
+        if (activeTool === 'pan') {
+          drawCanvas.style.touchAction = 'pan-x pan-y pinch-zoom';
+          drawCanvas.style.pointerEvents = 'none';
+          drawCanvas.style.cursor = 'grab';
+        } else {
+          drawCanvas.style.touchAction = 'none';
+          drawCanvas.style.pointerEvents = 'auto';
+          drawCanvas.style.cursor = 'crosshair';
+        }
+      }
+      updateTouchAction();
+
+      document.getElementById('colorPicker').addEventListener('input', e => currentColor = e.target.value);
+      document.getElementById('lineWidthSelect').addEventListener('change', e => currentWidth = parseInt(e.target.value));
+
+      let isDrawing = false;
+      let currentStroke = null;
+
+      drawCanvas.addEventListener('pointerdown', (e) => {
+        if (activeTool === 'pan') return;
+        e.preventDefault();
+        drawCanvas.setPointerCapture(e.pointerId);
+        const rect = drawCanvas.getBoundingClientRect();
+        const pos = {
+          x: (e.clientX - rect.left) / currentScale,
+          y: (e.clientY - rect.top) / currentScale
+        };
+
+        if (activeTool === 'text') {
+          const text = prompt('テキストを入力:');
+          if (text && text.trim()) {
+            saveAndRedraw({ tool: 'text', color: currentColor, width: currentWidth, x: pos.x, y: pos.y, text: text.trim() });
+          }
+          return;
+        }
+
+        if (activeTool === 'eraser') {
+          const key = `${doc.id}_p${currentPage}`;
+          const strokes = annotations[key] || [];
+          let targetId = null;
+          strokes.forEach(s => {
+            if (s.points && s.points.some(pt => Math.hypot(pt.x - pos.x, pt.y - pos.y) < 25)) targetId = s.id;
+            else if (s.tool === 'image' && pos.x >= s.x && pos.x <= s.x + s.width && pos.y >= s.y && pos.y <= s.y + s.height) targetId = s.id;
+          });
+          if (targetId) {
+            annotations[key] = annotations[key].filter(s => s.id !== targetId);
+            drawOverlay();
+          }
+          return;
+        }
+
+        isDrawing = true;
+        currentStroke = {
+          tool: activeTool,
+          color: currentColor,
+          width: currentWidth,
+          points: [pos],
+          startX: pos.x,
+          startY: pos.y,
+          endX: pos.x,
+          endY: pos.y
+        };
+      });
+
+      drawCanvas.addEventListener('pointermove', (e) => {
+        if (activeTool === 'pan' || !isDrawing || !currentStroke) return;
+        const rect = drawCanvas.getBoundingClientRect();
+        const pos = {
+          x: (e.clientX - rect.left) / currentScale,
+          y: (e.clientY - rect.top) / currentScale
+        };
+
+        if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
+          currentStroke.points.push(pos);
+        } else if (currentStroke.tool === 'rect') {
+          currentStroke.endX = pos.x;
+          currentStroke.endY = pos.y;
+        }
+        drawOverlay();
+        const ctx = drawCanvas.getContext('2d');
+        ctx.save();
+        ctx.strokeStyle = currentStroke.color;
+        ctx.lineCap = 'round';
+        if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
+          ctx.globalAlpha = currentStroke.tool === 'marker' ? 0.35 : 1.0;
+          ctx.lineWidth = currentStroke.tool === 'marker' ? currentStroke.width * 4 : currentStroke.width;
+          ctx.beginPath();
+          currentStroke.points.forEach((pt, idx) => idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+          ctx.stroke();
+        } else if (currentStroke.tool === 'rect') {
+          ctx.lineWidth = currentStroke.width;
+          ctx.strokeRect(currentStroke.startX, currentStroke.startY, currentStroke.endX - currentStroke.startX, currentStroke.endY - currentStroke.startY);
+        }
+        ctx.restore();
+      });
+
+      drawCanvas.addEventListener('pointerup', async (e) => {
+        if (activeTool === 'pan' || !isDrawing || !currentStroke) return;
+        isDrawing = false;
+        await saveAndRedraw(currentStroke);
+        currentStroke = null;
+      });
+
+      renderPage();
+    }
+
+    renderSidebar();
+  </script>
+</body>
+</html>
