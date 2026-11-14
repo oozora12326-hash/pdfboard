@@ -139,15 +139,17 @@
   <script>
     const APP_PASSWORD = "1234";
 
+    // すべて大文字の FIREBASE_CONFIG に設定済み
     const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDuVRjuskirN49x36Xsb0TmfxD7NNshTT8",
-  authDomain: "oozora12326-91d3d.firebaseapp.com",
-  projectId: "oozora12326-91d3d",
-  storageBucket: "oozora12326-91d3d.firebasestorage.app",
-  messagingSenderId: "381951638605",
-  appId: "1:381951638605:web:49269c22fbe41397dfb004",
-  measurementId: "G-LL2YZVV52S"
-};
+      apiKey: "AIzaSyDuVRjuskinN49x36sB0TmfxD7NNshTT8",
+      authDomain: "oozora12326-91d3d.firebaseapp.com",
+      projectId: "oozora12326-91d3d",
+      storageBucket: "oozora12326-91d3d.firebasestorage.app",
+      messagingSenderId: "381951638605",
+      appId: "1:381951638605:web:49269c22fbe41397dfb004",
+      measurementId: "G-LL2YZVV52S"
+    };
+
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem('auth_passed') === 'true') {
         document.getElementById('passwordModal').style.display = 'none';
