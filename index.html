@@ -79,7 +79,7 @@
         </div>
         <span id="syncStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
           <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-          <span>ローカル</span>
+          <span>ローカル保存</span>
         </span>
       </div>
 
@@ -106,8 +106,8 @@
             <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
               <span>📁</span><span>新規フォルダ</span>
             </button>
-            <button id="firebaseSetupInfoBtn" class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700" title="Firestore同期設定">
-              ⚙️
+            <button id="clearStorageBtn" class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-red-400 text-xs rounded-lg border border-slate-700" title="保存データをリセット">
+              🔄
             </button>
           </div>
         </div>
@@ -190,30 +190,68 @@
       initCloudListeners();
     }
 
-    const state = {
+    // =========================================================================
+    // ローカルストレージ管理 (永続化)
+    // =========================================================================
+    const STORAGE_KEY_STATE = 'pdf_sync_board_state_v2';
+    const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v2';
+
+    const defaultState = {
       folders: [
         { id: 'folder-default', name: '未分類・図面一式', collapsed: false }
       ],
-      documents: [],
-      annotations: {}
-    };
-
-    function createSampleDoc() {
-      const sampleId = 'sample-plan-01';
-      if (!state.documents.find(d => d.id === sampleId)) {
-        state.documents.push({
-          id: sampleId,
+      documents: [
+        {
+          id: 'sample-plan-01',
           name: 'サンプル平面図_1F.pdf',
           folderId: 'folder-default',
           type: 'sample',
           numPages: 2
-        });
+        }
+      ]
+    };
+
+    let state = loadState();
+    let annotations = loadAnnotations();
+
+    function loadState() {
+      const saved = localStorage.getItem(STORAGE_KEY_STATE);
+      if (saved) {
+        try { return JSON.parse(saved); } catch(e) { console.error(e); }
+      }
+      return defaultState;
+    }
+
+    function saveState() {
+      if (!isCloudMode) {
+        localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
       }
     }
 
+    function loadAnnotations() {
+      const saved = localStorage.getItem(STORAGE_KEY_ANNOTATIONS);
+      if (saved) {
+        try { return JSON.parse(saved); } catch(e) { console.error(e); }
+      }
+      return {};
+    }
+
+    function saveAnnotationsData() {
+      if (!isCloudMode) {
+        localStorage.setItem(STORAGE_KEY_ANNOTATIONS, JSON.stringify(annotations));
+      }
+    }
+
+    document.getElementById('clearStorageBtn').addEventListener('click', () => {
+      if (confirm('保存されたすべてのファイルと書き込みデータを初期化しますか？')) {
+        localStorage.removeItem(STORAGE_KEY_STATE);
+        localStorage.removeItem(STORAGE_KEY_ANNOTATIONS);
+        location.reload();
+      }
+    });
+
     function initCloudListeners() {
       if (!isCloudMode) {
-        createSampleDoc();
         renderSidebar();
         return;
       }
@@ -279,6 +317,7 @@
         });
       } else {
         state.folders.push({ id: 'folder-' + Date.now(), name: name.trim(), collapsed: false });
+        saveState();
         renderSidebar();
       }
     });
@@ -289,6 +328,7 @@
       } else {
         const doc = state.documents.find(d => d.id === docId);
         if (doc) doc.folderId = folderId;
+        saveState();
         renderSidebar();
       }
     }
@@ -324,6 +364,7 @@
             dataUrl: dataUrl,
             numPages: 1
           });
+          saveState();
           renderSidebar();
         }
       };
@@ -364,6 +405,7 @@
           url: rawUrl,
           numPages: 1
         });
+        saveState();
         renderSidebar();
       }
     });
@@ -452,6 +494,7 @@
                 await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(doc.id).delete();
               } else {
                 state.documents = state.documents.filter(d => d.id !== doc.id);
+                saveState();
                 renderSidebar();
               }
             });
@@ -475,7 +518,7 @@
 
       document.body.innerHTML = `
         <div id="viewerApp" class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
-          <!-- ヘッダー（ページ送り・ズームコントロールをヘッダー内にまとめてスッキリ配置） -->
+          <!-- ヘッダー -->
           <header class="h-12 bg-slate-900 border-b border-slate-800 px-2 sm:px-3 flex items-center justify-between shrink-0 z-20 gap-1 overflow-x-auto">
             <div class="flex items-center gap-1.5 min-w-0 shrink-0">
               <button id="backToListBtn" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow shrink-0">
@@ -508,7 +551,7 @@
             </div>
           </div>
 
-          <!-- ツールバー（縦・横画面の向きに合わせて自動で位置を切り替え） -->
+          <!-- ツールバー -->
           <div id="floatingToolbar" class="absolute z-30 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-1.5">
             <button id="undoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="元に戻る">↩️</button>
             <button id="redoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="やり直し">🔁</button>
@@ -533,7 +576,6 @@
         </div>
       `;
 
-      // 画面の向き（縦・横）に応じてツールバーの位置を切り替える関数
       function updateToolbarPosition() {
         const toolbar = document.getElementById('floatingToolbar');
         const div1 = document.getElementById('tbDivider1');
@@ -543,12 +585,10 @@
         const isLandscape = window.innerWidth > window.innerHeight;
 
         if (isLandscape) {
-          // 横画面のとき：右下にコンパクトな横並びで配置
           toolbar.className = "absolute right-4 bottom-4 z-30 bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-1.5";
           if (div1) { div1.className = "w-px h-6 bg-slate-700 mx-0.5"; }
           if (div2) { div2.className = "w-px h-6 bg-slate-700 mx-0.5"; }
         } else {
-          // 縦画面のとき：右側に縦並びで配置
           toolbar.className = "absolute right-3 top-16 z-30 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl flex flex-col gap-1.5 items-center";
           if (div1) { div1.className = "w-6 h-px bg-slate-700 my-0.5"; }
           if (div2) { div2.className = "w-6 h-px bg-slate-700 my-0.5"; }
@@ -573,13 +613,21 @@
       let currentColor = '#ef4444';
       let currentWidth = 1;
       let pdfDocInstance = null;
-      let annotations = state.annotations;
       let redoStack = [];
 
       const pdfCanvas = document.getElementById('pdfCanvas');
       const drawCanvas = document.getElementById('drawCanvas');
       const pdfCtx = pdfCanvas.getContext('2d');
       const wrapper = document.getElementById('canvasWrapper');
+
+      function autoFitScale(imgWidth, imgHeight) {
+        const container = document.getElementById('canvasContainer');
+        const maxW = container.clientWidth - 40;
+        const maxH = container.clientHeight - 40;
+        const scaleX = maxW / imgWidth;
+        const scaleY = maxH / imgHeight;
+        return Math.min(scaleX, scaleY, 1.0);
+      }
 
       async function renderPage() {
         if (doc.type === 'sample') {
@@ -612,6 +660,11 @@
             drawCanvas.width = img.width;
             drawCanvas.height = img.height;
             pdfCtx.drawImage(img, 0, 0);
+            
+            currentScale = autoFitScale(img.width, img.height);
+            wrapper.style.transform = `scale(${currentScale})`;
+            document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
+
             document.getElementById('pageIndicator').textContent = `1/1`;
             drawOverlay();
           };
@@ -686,6 +739,7 @@
         redoStack = [];
         stroke.id = 'st-' + Date.now() + Math.random();
         annotations[key].push(stroke);
+        saveAnnotationsData();
         drawOverlay();
       }
 
@@ -697,7 +751,6 @@
         if (currentPage < max) { currentPage++; renderPage(); }
       });
 
-      // 10% (0.1) ずつズーム変更
       document.getElementById('zoomInBtn').addEventListener('click', () => {
         currentScale = Math.min(3.0, +(currentScale + 0.1).toFixed(2));
         wrapper.style.transform = `scale(${currentScale})`;
@@ -714,6 +767,7 @@
         const strokes = annotations[key];
         if (!strokes || strokes.length === 0) return;
         redoStack.push(strokes.pop());
+        saveAnnotationsData();
         drawOverlay();
       });
       document.getElementById('redoBtn').addEventListener('click', () => {
@@ -721,6 +775,7 @@
         if (redoStack.length === 0) return;
         if (!annotations[key]) annotations[key] = [];
         annotations[key].push(redoStack.pop());
+        saveAnnotationsData();
         drawOverlay();
       });
 
@@ -807,6 +862,7 @@
           });
           if (targetId) {
             annotations[key] = annotations[key].filter(s => s.id !== targetId);
+            saveAnnotationsData();
             drawOverlay();
           }
           return;
