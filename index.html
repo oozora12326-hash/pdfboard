@@ -139,7 +139,6 @@
   <script>
     const APP_PASSWORD = "1234";
 
-    // すべて大文字の FIREBASE_CONFIG に設定済み
     const FIREBASE_CONFIG = {
       apiKey: "AIzaSyDuVRjuskinN49x36sB0TmfxD7NNshTT8",
       authDomain: "oozora12326-91d3d.firebaseapp.com",
@@ -193,7 +192,7 @@
     }
 
     // =========================================================================
-    // ローカルストレージ管理 (永続化)
+    // ストレージ管理 (ローカル/クラウド対応)
     // =========================================================================
     const STORAGE_KEY_STATE = 'pdf_sync_board_state_v2';
     const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v2';
@@ -306,6 +305,19 @@
           }
         }
         renderSidebar();
+      });
+
+      // クラウド上のアノテーション（書き込み）をリアルタイム監視・同期
+      roomRef.collection('annotations').onSnapshot(snap => {
+        annotations = {};
+        snap.forEach(doc => {
+          annotations[doc.id] = doc.data().strokes || [];
+        });
+        // もし現在ビューアが開いていれば再描画
+        const drawCanvas = document.getElementById('drawCanvas');
+        if (drawCanvas && window.refreshCurrentOverlay) {
+          window.refreshCurrentOverlay();
+        }
       });
     }
 
@@ -622,6 +634,10 @@
       const pdfCtx = pdfCanvas.getContext('2d');
       const wrapper = document.getElementById('canvasWrapper');
 
+      window.refreshCurrentOverlay = () => {
+        drawOverlay();
+      };
+
       function autoFitScale(imgWidth, imgHeight) {
         const container = document.getElementById('canvasContainer');
         const maxW = container.clientWidth - 40;
@@ -741,7 +757,14 @@
         redoStack = [];
         stroke.id = 'st-' + Date.now() + Math.random();
         annotations[key].push(stroke);
-        saveAnnotationsData();
+
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
+            strokes: annotations[key]
+          });
+        } else {
+          saveAnnotationsData();
+        }
         drawOverlay();
       }
 
@@ -764,20 +787,33 @@
         document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
       });
 
-      document.getElementById('undoBtn').addEventListener('click', () => {
+      document.getElementById('undoBtn').addEventListener('click', async () => {
         const key = `${doc.id}_p${currentPage}`;
         const strokes = annotations[key];
         if (!strokes || strokes.length === 0) return;
         redoStack.push(strokes.pop());
-        saveAnnotationsData();
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
+            strokes: annotations[key]
+          });
+        } else {
+          saveAnnotationsData();
+        }
         drawOverlay();
       });
-      document.getElementById('redoBtn').addEventListener('click', () => {
+
+      document.getElementById('redoBtn').addEventListener('click', async () => {
         const key = `${doc.id}_p${currentPage}`;
         if (redoStack.length === 0) return;
         if (!annotations[key]) annotations[key] = [];
         annotations[key].push(redoStack.pop());
-        saveAnnotationsData();
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
+            strokes: annotations[key]
+          });
+        } else {
+          saveAnnotationsData();
+        }
         drawOverlay();
       });
 
@@ -864,7 +900,13 @@
           });
           if (targetId) {
             annotations[key] = annotations[key].filter(s => s.id !== targetId);
-            saveAnnotationsData();
+            if (isCloudMode) {
+              db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
+                strokes: annotations[key]
+              });
+            } else {
+              saveAnnotationsData();
+            }
             drawOverlay();
           }
           return;
