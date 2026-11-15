@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - ZFD対応 & ズーム改善</title>
+  <title>PDF & Image Sync Board - 画像書き出し & 縮小改善対応</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -104,7 +104,6 @@
           <button id="addUrlDocBtn" class="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
             <span>＋ クラウドURLからPDF追加</span>
           </button>
-          <!-- .zwd および .zfd ファイルの選択を許可 -->
           <input type="file" id="localImageInput" accept="image/png, image/jpeg, image/webp, .zwd, .zfd" class="hidden" />
           <div class="flex gap-1.5">
             <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
@@ -397,7 +396,6 @@
         const docName = file.name;
         const lowerName = file.name.toLowerCase();
         
-        // ZWD または ZFD 形式の判定
         let fileType = 'image';
         if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
           fileType = 'cad';
@@ -491,17 +489,55 @@
 
         const header = document.createElement('div');
         header.className = 'px-3 py-2.5 bg-slate-800 flex items-center justify-between cursor-pointer text-xs font-semibold text-slate-200';
+        
+        let deleteFolderBtnHtml = '';
+        if (folder.id !== 'folder-default') {
+          deleteFolderBtnHtml = `<button class="delete-folder-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0 ml-2" title="フォルダごと一括削除">🗑️ 削除</button>`;
+        }
+
         header.innerHTML = `
-          <div class="flex items-center gap-2 truncate">
+          <div class="flex items-center gap-2 truncate flex-1">
             <span>${folder.collapsed ? '📁' : '📂'}</span>
             <span class="truncate">${folder.name}</span>
             <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded-full text-slate-300">${docsInFolder.length}</span>
           </div>
+          <div class="flex items-center shrink-0">
+            ${deleteFolderBtnHtml}
+          </div>
         `;
-        header.addEventListener('click', () => {
+
+        header.addEventListener('click', (e) => {
+          if (e.target.classList.contains('delete-folder-btn') || e.target.closest('.delete-folder-btn')) return;
           folder.collapsed = !folder.collapsed;
           renderSidebar();
         });
+
+        const delFolderBtn = header.querySelector('.delete-folder-btn');
+        if (delFolderBtn) {
+          delFolderBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダと、この中に入っている ${docsInFolder.length}個のファイル・図面をすべて完全に削除しますか？\n（この操作は元に戻せません）`;
+            if (!confirm(msg)) return;
+
+            if (isCloudMode) {
+              const batch = db.batch();
+              docsInFolder.forEach(d => {
+                const docRef = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
+                batch.delete(docRef);
+              });
+              const folderRef = db.collection('rooms').doc(ROOM_ID).collection('folders').doc(folder.id);
+              batch.delete(folderRef);
+
+              await batch.commit();
+            } else {
+              state.documents = state.documents.filter(d => d.folderId !== folder.id);
+              state.folders = state.folders.filter(f => f.id !== folder.id);
+              saveState();
+              renderSidebar();
+            }
+          });
+        }
+
         folderEl.appendChild(header);
 
         if (!folder.collapsed) {
@@ -583,10 +619,14 @@
               <button id="backToListBtn" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow shrink-0">
                 <span>◀</span><span class="hidden xs:inline">一覧</span>
               </button>
-              <h2 class="text-xs font-bold text-slate-200 truncate max-w-[100px] sm:max-w-[180px]">📄 ${doc.name}</h2>
+              <h2 class="text-xs font-bold text-slate-200 truncate max-w-[90px] sm:max-w-[160px]">📄 ${doc.name}</h2>
             </div>
 
             <div class="flex items-center gap-1.5 shrink-0">
+              <!-- 画像書き出し保存ボタン -->
+              <button id="exportImageBtn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition shrink-0" title="書き込みを含めて画像として保存">
+                <span>💾</span><span class="hidden sm:inline">保存</span>
+              </button>
               <!-- ページ送り -->
               <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
                 <button id="prevPageBtn" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold">◀</button>
@@ -602,7 +642,7 @@
             </div>
           </header>
 
-          <!-- キャンバス領域 (左上起点での拡大縮小＆スクロール対応) -->
+          <!-- キャンバス領域 -->
           <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-12">
             <div id="canvasWrapper" class="relative shadow-2xl bg-white" style="transform: scale(0.6); transform-origin: top left; margin: 0 auto;">
               <canvas id="pdfCanvas" class="block"></canvas>
@@ -725,7 +765,7 @@
         const maxH = container.clientHeight - 80;
         const scaleX = maxW / imgWidth;
         const scaleY = maxH / imgHeight;
-        return Math.min(scaleX, scaleY, 1.0);
+        return Math.max(0.1, Math.min(scaleX, scaleY, 1.0));
       }
 
       async function renderPage() {
@@ -877,6 +917,41 @@
         }
       }
 
+      // =========================================================================
+      // 書き込み内容を含めた画像（PNG）書き出し機能
+      // =========================================================================
+      document.getElementById('exportImageBtn').addEventListener('click', () => {
+        try {
+          const exportCanvas = document.createElement('canvas');
+          exportCanvas.width = pdfCanvas.width;
+          exportCanvas.height = pdfCanvas.height;
+          const exportCtx = exportCanvas.getContext('2d');
+
+          // 1. 背景の図面レイヤーを描画
+          exportCtx.drawImage(pdfCanvas, 0, 0);
+          // 2. ペン・テキスト・貼付写真のレイヤーを合成
+          exportCtx.drawImage(drawCanvas, 0, 0);
+
+          const baseName = doc.name.replace(/\.[^/.]+$/, "");
+          const fileName = `${baseName}_p${currentPage}.png`;
+
+          exportCanvas.toBlob((blob) => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }, 'image/png');
+        } catch (err) {
+          console.error(err);
+          alert('画像の書き出しに失敗しました。（外部URLのPDFはブラウザのセキュリティ制限により書き出せない場合があります）');
+        }
+      });
+
       document.getElementById('clearAllBtn').addEventListener('click', async () => {
         const key = `${doc.id}_p${currentPage}`;
         const strokes = annotations[key] || [];
@@ -922,7 +997,7 @@
         document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
       });
       document.getElementById('zoomOutBtn').addEventListener('click', () => {
-        currentScale = Math.max(0.3, +(currentScale - 0.1).toFixed(2));
+        currentScale = Math.max(0.1, +(currentScale - 0.1).toFixed(2));
         wrapper.style.transform = `scale(${currentScale})`;
         document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
       });
