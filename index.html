@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - ZFDファイル追加修正対応</title>
+  <title>PDF & Image Sync Board - ZFD選択制限解除対応</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -104,8 +104,8 @@
           <button id="addUrlDocBtn" class="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
             <span>＋ クラウドURLからPDF追加</span>
           </button>
-          <!-- .zwd および .zfd ファイルを確実に選択可能にする -->
-          <input type="file" id="localImageInput" accept="image/png,image/jpeg,image/webp,.zwd,.zfd" class="hidden" />
+          <!-- iOS等で.zfdファイルを完全に選択可能にするため、accept制限を解除（空に設定） -->
+          <input type="file" id="localImageInput" class="hidden" />
           <div class="flex gap-1.5">
             <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
               <span>📁</span><span>新規フォルダ</span>
@@ -398,7 +398,7 @@
         const lowerName = file.name.toLowerCase();
         
         let fileType = 'image';
-        // .zwd または .zfd ファイルの判定を確実に実施
+        // .zwd または .zfd ファイルの判定
         if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
           fileType = 'cad';
         }
