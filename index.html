@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - フルスクリーンビューア対応</title>
+  <title>PDF & Image Sync Board - 一括クリア & ZWD対応</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -84,6 +84,9 @@
       </div>
 
       <div class="flex items-center gap-2">
+        <div id="activeUsersIndicator" class="hidden sm:flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 text-[11px] text-slate-300">
+          <span>👥 接続中:</span><span id="activeUsersCount" class="font-bold text-emerald-400">1人</span>
+        </div>
         <button id="shareRoomBtn" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow">
           <span>🔗</span><span class="hidden sm:inline">URL共有</span>
         </button>
@@ -96,12 +99,12 @@
       <aside id="sidebar" class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-200 z-10">
         <div class="p-3 border-b border-slate-800 flex flex-col gap-2">
           <button id="addImageDocBtn" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
-            <span>📷 PNG / 画像ファイルを追加</span>
+            <span>📷 画像 / ZWD図面ファイル追加</span>
           </button>
           <button id="addUrlDocBtn" class="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
             <span>＋ クラウドURLからPDF追加</span>
           </button>
-          <input type="file" id="localImageInput" accept="image/png, image/jpeg, image/webp" class="hidden" />
+          <input type="file" id="localImageInput" accept="image/png, image/jpeg, image/webp, .zwd" class="hidden" />
           <div class="flex gap-1.5">
             <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
               <span>📁</span><span>新規フォルダ</span>
@@ -127,7 +130,7 @@
       <main id="mainWorkspaceArea" class="flex-1 bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-400 space-y-3">
         <div class="text-5xl">📂</div>
         <h2 class="text-lg font-bold text-white">図面を選択してください</h2>
-        <p class="text-xs max-w-sm leading-relaxed">左側のファイル一覧から確認したいPDFやPNG画像をタップすると、専用のフルスクリーン編集画面にジャンプします。</p>
+        <p class="text-xs max-w-sm leading-relaxed">左側のファイル一覧から確認したいPDFや画像・ZWD図面をタップすると、専用のフルスクリーン編集画面にジャンプします。</p>
       </main>
     </div>
   </div>
@@ -148,6 +151,8 @@
       appId: "1:381951638605:web:49269c22fbe41397dfb004",
       measurementId: "G-LL2YZVV52S"
     };
+
+    const USER_CLIENT_ID = 'user-' + Math.random().toString(36).substring(2, 9);
 
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem('auth_passed') === 'true') {
@@ -174,6 +179,7 @@
 
     let db = null;
     let isCloudMode = false;
+    let currentStrokeUnsubscribe = null;
 
     function initApp() {
       if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId) {
@@ -183,7 +189,10 @@
           isCloudMode = true;
           const badge = document.getElementById('syncStatusBadge');
           badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5";
-          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>クラウド</span>`;
+          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>クラウド (高速同期)</span>`;
+
+          setInterval(updatePresence, 10000);
+          updatePresence();
         } catch (e) {
           console.error("Firebase init failed:", e);
         }
@@ -191,9 +200,17 @@
       initCloudListeners();
     }
 
-    // =========================================================================
-    // ストレージ管理 (ローカル/クラウド対応)
-    // =========================================================================
+    async function updatePresence(currentDocId = null, currentPageNum = null) {
+      if (!isCloudMode) return;
+      try {
+        await db.collection('rooms').doc(ROOM_ID).collection('presence').doc(USER_CLIENT_ID).set({
+          lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+          viewingDoc: currentDocId,
+          page: currentPageNum
+        }, { merge: true });
+      } catch(e) { console.error(e); }
+    }
+
     const STORAGE_KEY_STATE = 'pdf_sync_board_state_v2';
     const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v2';
 
@@ -244,11 +261,27 @@
     }
 
     document.getElementById('clearStorageBtn').addEventListener('click', () => {
-      if (confirm('保存されたすべてのファイルと書き込みデータを初期化しますか？')) {
+      if (confirm('ローカルに保存されたデータを初期化しますか？')) {
         localStorage.removeItem(STORAGE_KEY_STATE);
         localStorage.removeItem(STORAGE_KEY_ANNOTATIONS);
         location.reload();
       }
+    });
+
+    document.getElementById('shareRoomBtn').addEventListener('click', () => {
+      const shareUrl = window.location.origin + window.location.pathname + '?room=' + ROOM_ID;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          alert('共有用URLをクリップボードにコピーしました！\n別の端末やブラウザに貼り付けて開いてください。');
+        });
+      } else {
+        prompt('このURLをコピーしてください:', shareUrl);
+      }
+    });
+
+    document.getElementById('toggleSidebarBtn').addEventListener('click', () => {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.toggle('hidden');
     });
 
     function initCloudListeners() {
@@ -307,16 +340,18 @@
         renderSidebar();
       });
 
-      // クラウド上のアノテーション（書き込み）をリアルタイム監視・同期
-      roomRef.collection('annotations').onSnapshot(snap => {
-        annotations = {};
+      roomRef.collection('presence').onSnapshot(snap => {
+        let count = 0;
+        const now = Date.now();
         snap.forEach(doc => {
-          annotations[doc.id] = doc.data().strokes || [];
+          const data = doc.data();
+          if (data.lastSeen && (now - data.lastSeen.toMillis() < 30000)) {
+            count++;
+          }
         });
-        // もし現在ビューアが開いていれば再描画
-        const drawCanvas = document.getElementById('drawCanvas');
-        if (drawCanvas && window.refreshCurrentOverlay) {
-          window.refreshCurrentOverlay();
+        const countEl = document.getElementById('activeUsersCount');
+        if (countEl) {
+          countEl.textContent = `${Math.max(1, count)}人`;
         }
       });
     }
@@ -359,12 +394,14 @@
       reader.onload = async (event) => {
         const dataUrl = event.target.result;
         const docName = file.name;
+        // ZWDや画像ファイルとして処理
+        const fileType = file.name.toLowerCase().endsWith('.zwd') ? 'zwd' : 'image';
 
         if (isCloudMode) {
           await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
             name: docName,
             folderId: 'folder-default',
-            type: 'image',
+            type: fileType,
             dataUrl: dataUrl,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
@@ -374,7 +411,7 @@
             id: newId,
             name: docName,
             folderId: 'folder-default',
-            type: 'image',
+            type: fileType,
             dataUrl: dataUrl,
             numPages: 1
           });
@@ -479,7 +516,9 @@
               `<option value="${f.id}" ${f.id === doc.folderId ? 'selected' : ''}>📁 ${f.name}</option>`
             ).join('');
 
-            const icon = doc.type === 'image' ? '🖼️' : '📄';
+            let icon = '📄';
+            if (doc.type === 'image') icon = '🖼️';
+            if (doc.type === 'zwd') icon = '📐';
 
             item.innerHTML = `
               <div class="flex items-center justify-between gap-1">
@@ -578,6 +617,7 @@
             <button id="addPhotoBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="写真貼り付け">📷</button>
             <input type="file" id="photoFileInput" accept="image/*" class="hidden" />
             <button data-tool="eraser" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="消しゴム">🧹</button>
+            <button id="clearAllBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center bg-red-600/20 text-red-300 hover:bg-red-600 hover:text-white transition" title="一括クリア（全消し）">🗑️</button>
             <div id="tbDivider2" class="bg-slate-700"></div>
             <input type="color" id="colorPicker" value="#ef4444" class="w-7 h-7 rounded-md cursor-pointer bg-transparent border-0 p-0" title="色選択" />
             <select id="lineWidthSelect" class="bg-slate-950 text-[10px] text-slate-200 rounded-md px-1 py-1 border border-slate-700 text-center w-8">
@@ -614,6 +654,8 @@
       updateToolbarPosition();
 
       document.getElementById('backToListBtn').addEventListener('click', () => {
+        if (currentStrokeUnsubscribe) currentStrokeUnsubscribe();
+        if (isCloudMode) updatePresence(null, null);
         location.reload();
       });
 
@@ -628,15 +670,48 @@
       let currentWidth = 1;
       let pdfDocInstance = null;
       let redoStack = [];
+      const loadedImagesCache = {};
 
       const pdfCanvas = document.getElementById('pdfCanvas');
       const drawCanvas = document.getElementById('drawCanvas');
       const pdfCtx = pdfCanvas.getContext('2d');
       const wrapper = document.getElementById('canvasWrapper');
 
-      window.refreshCurrentOverlay = () => {
-        drawOverlay();
-      };
+      function subscribePageStrokes(pageKey) {
+        if (currentStrokeUnsubscribe) {
+          currentStrokeUnsubscribe();
+          currentStrokeUnsubscribe = null;
+        }
+        if (!isCloudMode) {
+          drawOverlay();
+          return;
+        }
+
+        if (!annotations[pageKey]) annotations[pageKey] = [];
+
+        const strokesRef = db.collection('rooms').doc(ROOM_ID)
+          .collection('annotations').doc(pageKey)
+          .collection('strokes').orderBy('createdAt', 'asc');
+
+        currentStrokeUnsubscribe = strokesRef.onSnapshot(snap => {
+          snap.docChanges().forEach(change => {
+            const strokeId = change.doc.id;
+            const data = change.doc.data();
+
+            if (change.type === 'added') {
+              if (!annotations[pageKey].find(s => s.id === strokeId)) {
+                annotations[pageKey].push({ id: strokeId, ...data });
+              }
+            } else if (change.type === 'modified') {
+              const idx = annotations[pageKey].findIndex(s => s.id === strokeId);
+              if (idx !== -1) annotations[pageKey][idx] = { id: strokeId, ...data };
+            } else if (change.type === 'removed') {
+              annotations[pageKey] = annotations[pageKey].filter(s => s.id !== strokeId);
+            }
+          });
+          drawOverlay();
+        });
+      }
 
       function autoFitScale(imgWidth, imgHeight) {
         const container = document.getElementById('canvasContainer');
@@ -648,6 +723,11 @@
       }
 
       async function renderPage() {
+        const pageKey = `${doc.id}_p${currentPage}`;
+        if (isCloudMode) {
+          updatePresence(doc.id, currentPage);
+        }
+
         if (doc.type === 'sample') {
           pdfCanvas.width = 800;
           pdfCanvas.height = 1100;
@@ -666,11 +746,11 @@
           pdfCtx.fillText('会議室 A', 180, 285);
           pdfCtx.fillText('執務スペース', 480, 285);
           document.getElementById('pageIndicator').textContent = `${currentPage}/2`;
-          drawOverlay();
+          subscribePageStrokes(pageKey);
           return;
         }
 
-        if (doc.type === 'image') {
+        if (doc.type === 'image' || doc.type === 'zwd') {
           const img = new Image();
           img.onload = () => {
             pdfCanvas.width = img.width;
@@ -679,12 +759,21 @@
             drawCanvas.height = img.height;
             pdfCtx.drawImage(img, 0, 0);
             
+            // ZWD形式の場合のラベル表示
+            if (doc.type === 'zwd') {
+              pdfCtx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+              pdfCtx.fillRect(20, 20, 240, 40);
+              pdfCtx.fillStyle = '#38bdf8';
+              pdfCtx.font = 'bold 16px sans-serif';
+              pdfCtx.fillText('📐 ZWD図面レイヤー', 35, 45);
+            }
+
             currentScale = autoFitScale(img.width, img.height);
             wrapper.style.transform = `scale(${currentScale})`;
             document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
 
             document.getElementById('pageIndicator').textContent = `1/1`;
-            drawOverlay();
+            subscribePageStrokes(pageKey);
           };
           img.src = doc.dataUrl;
           return;
@@ -704,7 +793,7 @@
             drawCanvas.height = viewport.height;
             await page.render({ canvasContext: pdfCtx, viewport }).promise;
             document.getElementById('pageIndicator').textContent = `${currentPage}/${doc.numPages}`;
-            drawOverlay();
+            subscribePageStrokes(pageKey);
           } catch (err) {
             console.error(err);
             pdfCtx.fillStyle = '#1e293b';
@@ -725,8 +814,17 @@
 
         strokes.forEach(s => {
           ctx.save();
-          if (s.tool === 'image' && s.imgElement) {
-            ctx.drawImage(s.imgElement, s.x, s.y, s.width, s.height);
+          if (s.tool === 'image' && s.dataUrl) {
+            if (loadedImagesCache[s.id]) {
+              ctx.drawImage(loadedImagesCache[s.id], s.x, s.y, s.width, s.height);
+            } else {
+              const img = new Image();
+              img.onload = () => {
+                loadedImagesCache[s.id] = img;
+                drawOverlay();
+              };
+              img.src = s.dataUrl;
+            }
           } else {
             ctx.strokeStyle = s.color;
             ctx.fillStyle = s.color;
@@ -737,7 +835,9 @@
               ctx.globalAlpha = s.tool === 'marker' ? 0.35 : 1.0;
               ctx.lineWidth = s.tool === 'marker' ? s.width * 4 : s.width;
               ctx.beginPath();
-              s.points.forEach((pt, idx) => idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+              if (s.points) {
+                s.points.forEach((pt, idx) => idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+              }
               ctx.stroke();
             } else if (s.tool === 'rect') {
               ctx.lineWidth = s.width;
@@ -755,18 +855,58 @@
         const key = `${doc.id}_p${currentPage}`;
         if (!annotations[key]) annotations[key] = [];
         redoStack = [];
-        stroke.id = 'st-' + Date.now() + Math.random();
+
+        const strokeId = 'st-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+        stroke.id = strokeId;
+
         annotations[key].push(stroke);
+        drawOverlay();
 
         if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
-            strokes: annotations[key]
-          });
+          const payload = { ...stroke, createdAt: Date.now() };
+          await db.collection('rooms').doc(ROOM_ID)
+            .collection('annotations').doc(key)
+            .collection('strokes').doc(strokeId).set(payload);
         } else {
           saveAnnotationsData();
         }
-        drawOverlay();
       }
+
+      // =========================================================================
+      // 一括クリア（確認画面付き）
+      // =========================================================================
+      document.getElementById('clearAllBtn').addEventListener('click', async () => {
+        const key = `${doc.id}_p${currentPage}`;
+        const strokes = annotations[key] || [];
+        if (strokes.length === 0) {
+          alert('消去する書き込みがありません。');
+          return;
+        }
+
+        // 誤操作防止の確認ダイアログ
+        if (!confirm('本当にこのページのすべての書き込みを削除しますか？\n（この操作は元に戻せません）')) {
+          return;
+        }
+
+        // ローカルおよびクラウド上のデータをクリア
+        annotations[key] = [];
+        drawOverlay();
+
+        if (isCloudMode) {
+          const batch = db.batch();
+          const strokesRef = db.collection('rooms').doc(ROOM_ID)
+            .collection('annotations').doc(key)
+            .collection('strokes');
+          
+          const snap = await strokesRef.get();
+          snap.forEach(d => {
+            batch.delete(d.ref);
+          });
+          await batch.commit();
+        } else {
+          saveAnnotationsData();
+        }
+      });
 
       document.getElementById('prevPageBtn').addEventListener('click', () => {
         if (currentPage > 1) { currentPage--; renderPage(); }
@@ -791,30 +931,37 @@
         const key = `${doc.id}_p${currentPage}`;
         const strokes = annotations[key];
         if (!strokes || strokes.length === 0) return;
-        redoStack.push(strokes.pop());
+
+        const popped = strokes.pop();
+        redoStack.push(popped);
+        drawOverlay();
+
         if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
-            strokes: annotations[key]
-          });
+          await db.collection('rooms').doc(ROOM_ID)
+            .collection('annotations').doc(key)
+            .collection('strokes').doc(popped.id).delete();
         } else {
           saveAnnotationsData();
         }
-        drawOverlay();
       });
 
       document.getElementById('redoBtn').addEventListener('click', async () => {
         const key = `${doc.id}_p${currentPage}`;
         if (redoStack.length === 0) return;
         if (!annotations[key]) annotations[key] = [];
-        annotations[key].push(redoStack.pop());
+
+        const restored = redoStack.pop();
+        annotations[key].push(restored);
+        drawOverlay();
+
         if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
-            strokes: annotations[key]
-          });
+          const payload = { ...restored, createdAt: Date.now() };
+          await db.collection('rooms').doc(ROOM_ID)
+            .collection('annotations').doc(key)
+            .collection('strokes').doc(restored.id).set(payload);
         } else {
           saveAnnotationsData();
         }
-        drawOverlay();
       });
 
       document.getElementById('addPhotoBtn').addEventListener('click', () => document.getElementById('photoFileInput').click());
@@ -823,19 +970,20 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (event) => {
+          const dataUrl = event.target.result;
           const img = new Image();
           img.onload = () => {
             const maxW = 200;
             saveAndRedraw({
               tool: 'image',
-              imgElement: img,
+              dataUrl: dataUrl,
               x: 100,
               y: 100,
               width: maxW,
               height: img.height * (maxW / img.width)
             });
           };
-          img.src = event.target.result;
+          img.src = dataUrl;
         };
         reader.readAsDataURL(file);
         e.target.value = '';
@@ -872,14 +1020,14 @@
       let isDrawing = false;
       let currentStroke = null;
 
-      drawCanvas.addEventListener('pointerdown', (e) => {
+      drawCanvas.addEventListener('pointerdown', async (e) => {
         if (activeTool === 'pan') return;
         e.preventDefault();
         drawCanvas.setPointerCapture(e.pointerId);
         const rect = drawCanvas.getBoundingClientRect();
         const pos = {
-          x: (e.clientX - rect.left) / currentScale,
-          y: (e.clientY - rect.top) / currentScale
+          x: Math.round((e.clientX - rect.left) / currentScale),
+          y: Math.round((e.clientY - rect.top) / currentScale)
         };
 
         if (activeTool === 'text') {
@@ -900,14 +1048,14 @@
           });
           if (targetId) {
             annotations[key] = annotations[key].filter(s => s.id !== targetId);
+            drawOverlay();
             if (isCloudMode) {
-              db.collection('rooms').doc(ROOM_ID).collection('annotations').doc(key).set({
-                strokes: annotations[key]
-              });
+              await db.collection('rooms').doc(ROOM_ID)
+                .collection('annotations').doc(key)
+                .collection('strokes').doc(targetId).delete();
             } else {
               saveAnnotationsData();
             }
-            drawOverlay();
           }
           return;
         }
@@ -929,16 +1077,20 @@
         if (activeTool === 'pan' || !isDrawing || !currentStroke) return;
         const rect = drawCanvas.getBoundingClientRect();
         const pos = {
-          x: (e.clientX - rect.left) / currentScale,
-          y: (e.clientY - rect.top) / currentScale
+          x: Math.round((e.clientX - rect.left) / currentScale),
+          y: Math.round((e.clientY - rect.top) / currentScale)
         };
 
         if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
-          currentStroke.points.push(pos);
+          const lastPt = currentStroke.points[currentStroke.points.length - 1];
+          if (!lastPt || Math.hypot(pos.x - lastPt.x, pos.y - lastPt.y) >= 2) {
+            currentStroke.points.push(pos);
+          }
         } else if (currentStroke.tool === 'rect') {
           currentStroke.endX = pos.x;
           currentStroke.endY = pos.y;
         }
+
         drawOverlay();
         const ctx = drawCanvas.getContext('2d');
         ctx.save();
