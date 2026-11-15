@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - フォルダ並び替え対応</title>
+  <title>PDF & Image Sync Board - フォルダ並び替え修正版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -292,7 +292,8 @@
 
       const roomRef = db.collection('rooms').doc(ROOM_ID);
 
-      roomRef.collection('folders').orderBy('order').onSnapshot(snap => {
+      // バグ修正: orderByを外し、全件取得した上でクライアント側で安全にorder順にソートする
+      roomRef.collection('folders').onSnapshot(snap => {
         const list = [{ id: 'folder-default', name: '未分類・図面一式', order: 0, collapsed: false }];
         snap.forEach(doc => {
           const d = doc.data();
@@ -300,12 +301,11 @@
           list.push({
             id: doc.id,
             name: d.name,
-            order: d.order !== undefined ? d.order : 1,
+            order: d.order !== undefined ? d.order : 999,
             collapsed: existing ? existing.collapsed : false
           });
         });
-        // order順にソート
-        list.sort((a, b) => a.order - b.order);
+        list.sort((a, b) => (a.order || 0) - (b.order || 0));
         state.folders = list;
         renderSidebar();
       });
@@ -476,18 +476,15 @@
       }
     });
 
-    // フォルダの順番を入れ替える関数
     async function reorderFolders(draggedId, targetId) {
       if (draggedId === targetId) return;
       const draggedIdx = state.folders.findIndex(f => f.id === draggedId);
       const targetIdx = state.folders.findIndex(f => f.id === targetId);
       if (draggedIdx === -1 || targetIdx === -1) return;
 
-      // 配列内で要素を移動
       const [moved] = state.folders.splice(draggedIdx, 1);
       state.folders.splice(targetIdx, 0, moved);
 
-      // 順序（order）を振り直して保存
       state.folders.forEach((f, idx) => f.order = idx);
 
       if (isCloudMode) {
@@ -510,16 +507,14 @@
       container.innerHTML = '';
       document.getElementById('docCountLabel').textContent = `${state.documents.length} ファイル`;
 
-      // order順にソートして描画
       state.folders.sort((a, b) => (a.order || 0) - (b.order || 0));
 
       state.folders.forEach(folder => {
         const docsInFolder = state.documents.filter(d => d.folderId === folder.id);
         const folderEl = document.createElement('div');
         folderEl.className = 'bg-slate-800/60 border border-slate-800 rounded-xl overflow-hidden transition-all';
-        folderEl.draggable = true; // フォルダ自体のドラッグを有効化
+        folderEl.draggable = true;
 
-        // フォルダのドラッグ＆ドロップ（並び替え）イベント
         folderEl.addEventListener('dragstart', e => {
           e.stopPropagation();
           e.dataTransfer.setData('text/folder-id', folder.id);
@@ -527,7 +522,6 @@
 
         folderEl.addEventListener('dragover', e => {
           e.preventDefault();
-          // ファイルドラッグかフォルダドラッグかで枠線を切り替え
           folderEl.classList.add('border-blue-500');
         });
 
@@ -543,10 +537,8 @@
           const draggedDocId = e.dataTransfer.getData('text/plain');
 
           if (draggedFolderId) {
-            // フォルダの並び替え
             reorderFolders(draggedFolderId, folder.id);
           } else if (draggedDocId) {
-            // ファイルの移動
             moveDocToFolder(draggedDocId, folder.id);
           }
         });
