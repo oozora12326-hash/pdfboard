@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 画像書き出し & 縮小改善対応</title>
+  <title>PDF & Image Sync Board - ZFDファイル追加修正対応</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -104,7 +104,8 @@
           <button id="addUrlDocBtn" class="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
             <span>＋ クラウドURLからPDF追加</span>
           </button>
-          <input type="file" id="localImageInput" accept="image/png, image/jpeg, image/webp, .zwd, .zfd" class="hidden" />
+          <!-- .zwd および .zfd ファイルを確実に選択可能にする -->
+          <input type="file" id="localImageInput" accept="image/png,image/jpeg,image/webp,.zwd,.zfd" class="hidden" />
           <div class="flex gap-1.5">
             <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
               <span>📁</span><span>新規フォルダ</span>
@@ -397,6 +398,7 @@
         const lowerName = file.name.toLowerCase();
         
         let fileType = 'image';
+        // .zwd または .zfd ファイルの判定を確実に実施
         if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
           fileType = 'cad';
         }
@@ -623,17 +625,14 @@
             </div>
 
             <div class="flex items-center gap-1.5 shrink-0">
-              <!-- 画像書き出し保存ボタン -->
               <button id="exportImageBtn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition shrink-0" title="書き込みを含めて画像として保存">
                 <span>💾</span><span class="hidden sm:inline">保存</span>
               </button>
-              <!-- ページ送り -->
               <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
                 <button id="prevPageBtn" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold">◀</button>
                 <span id="pageIndicator" class="text-[11px] font-mono text-slate-300 whitespace-nowrap">1/1</span>
                 <button id="nextPageBtn" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold">▶</button>
               </div>
-              <!-- ズームコントロール -->
               <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
                 <button id="zoomOutBtn" class="w-6 h-6 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-bold flex items-center justify-center">－</button>
                 <span id="scaleLabel" class="text-[11px] font-bold text-emerald-400 w-9 text-center whitespace-nowrap">60%</span>
@@ -917,9 +916,6 @@
         }
       }
 
-      // =========================================================================
-      // 書き込み内容を含めた画像（PNG）書き出し機能
-      // =========================================================================
       document.getElementById('exportImageBtn').addEventListener('click', () => {
         try {
           const exportCanvas = document.createElement('canvas');
@@ -927,9 +923,7 @@
           exportCanvas.height = pdfCanvas.height;
           const exportCtx = exportCanvas.getContext('2d');
 
-          // 1. 背景の図面レイヤーを描画
           exportCtx.drawImage(pdfCanvas, 0, 0);
-          // 2. ペン・テキスト・貼付写真のレイヤーを合成
           exportCtx.drawImage(drawCanvas, 0, 0);
 
           const baseName = doc.name.replace(/\.[^/.]+$/, "");
@@ -948,7 +942,7 @@
           }, 'image/png');
         } catch (err) {
           console.error(err);
-          alert('画像の書き出しに失敗しました。（外部URLのPDFはブラウザのセキュリティ制限により書き出せない場合があります）');
+          alert('画像の書き出しに失敗しました。');
         }
       });
 
