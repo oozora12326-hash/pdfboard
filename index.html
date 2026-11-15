@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - ZFD選択制限解除対応</title>
+  <title>PDF & Image Sync Board - フォルダ並び替え対応</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -104,7 +104,6 @@
           <button id="addUrlDocBtn" class="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
             <span>＋ クラウドURLからPDF追加</span>
           </button>
-          <!-- iOS等で.zfdファイルを完全に選択可能にするため、accept制限を解除（空に設定） -->
           <input type="file" id="localImageInput" class="hidden" />
           <div class="flex gap-1.5">
             <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
@@ -212,12 +211,12 @@
       } catch(e) { console.error(e); }
     }
 
-    const STORAGE_KEY_STATE = 'pdf_sync_board_state_v2';
+    const STORAGE_KEY_STATE = 'pdf_sync_board_state_v3';
     const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v2';
 
     const defaultState = {
       folders: [
-        { id: 'folder-default', name: '未分類・図面一式', collapsed: false }
+        { id: 'folder-default', name: '未分類・図面一式', order: 0, collapsed: false }
       ],
       documents: [
         {
@@ -293,13 +292,20 @@
 
       const roomRef = db.collection('rooms').doc(ROOM_ID);
 
-      roomRef.collection('folders').orderBy('createdAt').onSnapshot(snap => {
-        const list = [{ id: 'folder-default', name: '未分類・図面一式', collapsed: false }];
+      roomRef.collection('folders').orderBy('order').onSnapshot(snap => {
+        const list = [{ id: 'folder-default', name: '未分類・図面一式', order: 0, collapsed: false }];
         snap.forEach(doc => {
           const d = doc.data();
           const existing = state.folders.find(f => f.id === doc.id);
-          list.push({ id: doc.id, name: d.name, collapsed: existing ? existing.collapsed : false });
+          list.push({
+            id: doc.id,
+            name: d.name,
+            order: d.order !== undefined ? d.order : 1,
+            collapsed: existing ? existing.collapsed : false
+          });
         });
+        // order順にソート
+        list.sort((a, b) => a.order - b.order);
         state.folders = list;
         renderSidebar();
       });
@@ -360,13 +366,17 @@
     document.getElementById('createFolderBtn').addEventListener('click', async () => {
       const name = prompt('新しいフォルダ名を入力してください:', '施工図・電気設備');
       if (!name || !name.trim()) return;
+      
+      const newOrder = state.folders.length > 0 ? Math.max(...state.folders.map(f => f.order || 0)) + 1 : 1;
+
       if (isCloudMode) {
         await db.collection('rooms').doc(ROOM_ID).collection('folders').add({
           name: name.trim(),
+          order: newOrder,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       } else {
-        state.folders.push({ id: 'folder-' + Date.now(), name: name.trim(), collapsed: false });
+        state.folders.push({ id: 'folder-' + Date.now(), name: name.trim(), order: newOrder, collapsed: false });
         saveState();
         renderSidebar();
       }
@@ -398,7 +408,6 @@
         const lowerName = file.name.toLowerCase();
         
         let fileType = 'image';
-        // .zwd または .zfd ファイルの判定
         if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
           fileType = 'cad';
         }
@@ -467,26 +476,79 @@
       }
     });
 
+    // フォルダの順番を入れ替える関数
+    async function reorderFolders(draggedId, targetId) {
+      if (draggedId === targetId) return;
+      const draggedIdx = state.folders.findIndex(f => f.id === draggedId);
+      const targetIdx = state.folders.findIndex(f => f.id === targetId);
+      if (draggedIdx === -1 || targetIdx === -1) return;
+
+      // 配列内で要素を移動
+      const [moved] = state.folders.splice(draggedIdx, 1);
+      state.folders.splice(targetIdx, 0, moved);
+
+      // 順序（order）を振り直して保存
+      state.folders.forEach((f, idx) => f.order = idx);
+
+      if (isCloudMode) {
+        const batch = db.batch();
+        state.folders.forEach(f => {
+          if (f.id !== 'folder-default') {
+            const ref = db.collection('rooms').doc(ROOM_ID).collection('folders').doc(f.id);
+            batch.update(ref, { order: f.order });
+          }
+        });
+        await batch.commit();
+      } else {
+        saveState();
+        renderSidebar();
+      }
+    }
+
     function renderSidebar() {
       const container = document.getElementById('folderListContainer');
       container.innerHTML = '';
       document.getElementById('docCountLabel').textContent = `${state.documents.length} ファイル`;
 
+      // order順にソートして描画
+      state.folders.sort((a, b) => (a.order || 0) - (b.order || 0));
+
       state.folders.forEach(folder => {
         const docsInFolder = state.documents.filter(d => d.folderId === folder.id);
         const folderEl = document.createElement('div');
-        folderEl.className = 'bg-slate-800/60 border border-slate-800 rounded-xl overflow-hidden';
+        folderEl.className = 'bg-slate-800/60 border border-slate-800 rounded-xl overflow-hidden transition-all';
+        folderEl.draggable = true; // フォルダ自体のドラッグを有効化
+
+        // フォルダのドラッグ＆ドロップ（並び替え）イベント
+        folderEl.addEventListener('dragstart', e => {
+          e.stopPropagation();
+          e.dataTransfer.setData('text/folder-id', folder.id);
+        });
 
         folderEl.addEventListener('dragover', e => {
           e.preventDefault();
+          // ファイルドラッグかフォルダドラッグかで枠線を切り替え
           folderEl.classList.add('border-blue-500');
         });
-        folderEl.addEventListener('dragleave', () => folderEl.classList.remove('border-blue-500'));
+
+        folderEl.addEventListener('dragleave', () => {
+          folderEl.classList.remove('border-blue-500');
+        });
+
         folderEl.addEventListener('drop', e => {
           e.preventDefault();
           folderEl.classList.remove('border-blue-500');
+
+          const draggedFolderId = e.dataTransfer.getData('text/folder-id');
           const draggedDocId = e.dataTransfer.getData('text/plain');
-          if (draggedDocId) moveDocToFolder(draggedDocId, folder.id);
+
+          if (draggedFolderId) {
+            // フォルダの並び替え
+            reorderFolders(draggedFolderId, folder.id);
+          } else if (draggedDocId) {
+            // ファイルの移動
+            moveDocToFolder(draggedDocId, folder.id);
+          }
         });
 
         const header = document.createElement('div');
@@ -499,6 +561,7 @@
 
         header.innerHTML = `
           <div class="flex items-center gap-2 truncate flex-1">
+            <span class="cursor-grab text-slate-400" title="ドラッグして並び替え">☰</span>
             <span>${folder.collapsed ? '📁' : '📂'}</span>
             <span class="truncate">${folder.name}</span>
             <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded-full text-slate-300">${docsInFolder.length}</span>
@@ -554,7 +617,10 @@
             const item = document.createElement('div');
             item.draggable = true;
             item.className = 'p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800/80 border border-slate-700/80 flex flex-col gap-2 transition cursor-pointer shadow-sm';
-            item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', doc.id));
+            item.addEventListener('dragstart', e => {
+              e.stopPropagation();
+              e.dataTransfer.setData('text/plain', doc.id);
+            });
 
             const folderOptions = state.folders.map(f =>
               `<option value="${f.id}" ${f.id === doc.folderId ? 'selected' : ''}>📁 ${f.name}</option>`
