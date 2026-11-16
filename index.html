@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 改良版</title>
+  <title>PDF & Image Sync Board - 中央配置改良版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,6 +31,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      box-sizing: border-box;
     }
     #passwordModal, input, button, select {
       touch-action: manipulation;
@@ -101,7 +102,6 @@
       <!-- Left Sidebar (Folders & Files) -->
       <aside id="sidebar" class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-200 z-10">
         <div class="p-3 border-b border-slate-800 flex flex-col gap-2">
-          <!-- 複数選択対応 (multiple) -->
           <button id="addImageDocBtn" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
             <span>📷 画像 / PDF / 図面追加</span>
           </button>
@@ -409,7 +409,6 @@
       document.getElementById('localImageInput').click();
     });
 
-    // 複数ファイル（画像・PDF等）の一括追加処理
     document.getElementById('localImageInput').addEventListener('change', async (e) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
@@ -508,7 +507,7 @@
         .sort((a, b) => (a.order || 0) - (b.order || 0));
 
       children.forEach(f => {
-        const prefix = depth > 0 ? ' '.repeat(depth) + '└ ' : '';
+        const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : '';
         options.push({ id: f.id, label: `${prefix}📁 ${f.name}` });
         options = options.concat(getFlatFolderOptions(f.id, depth + 1));
       });
@@ -609,7 +608,6 @@
               e.stopPropagation();
               const targetFolderIds = getDescendantFolderIds(folder.id);
               const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
-              const subFolderCount = targetFolderIds.length - 1;
 
               const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダを削除しますか？\n（中身のファイル ${targetDocs.length}個も削除されます）`;
               if (!confirm(msg)) return;
@@ -949,8 +947,8 @@
             </div>
           </header>
 
-          <!-- キャンバス領域（中央配置・スクロール改善） -->
-          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-12 min-w-full min-h-full">
+          <!-- キャンバス領域（中央配置） -->
+          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-12">
             <div id="canvasWrapper" class="relative shadow-2xl bg-white m-auto" style="transform: scale(0.6); transform-origin: center center;">
               <canvas id="pdfCanvas" class="block"></canvas>
               <canvas id="drawCanvas" class="absolute inset-0"></canvas>
@@ -1032,6 +1030,16 @@
         currentScale = Math.max(0.1, Math.min(4.0, +newScale.toFixed(3)));
         wrapper.style.transform = `scale(${currentScale})`;
         document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
+      }
+
+      // スクロール位置を中央に合わせる関数
+      function centerCanvasScroll() {
+        requestAnimationFrame(() => {
+          if (canvasContainer) {
+            canvasContainer.scrollLeft = (canvasContainer.scrollWidth - canvasContainer.clientWidth) / 2;
+            canvasContainer.scrollTop = (canvasContainer.scrollHeight - canvasContainer.clientHeight) / 2;
+          }
+        });
       }
 
       // ピンチイン・ピンチアウト対応
@@ -1135,6 +1143,7 @@
           pdfCtx.fillText('執務スペース', 480, 285);
           document.getElementById('pageIndicator').textContent = `${currentPage}/2`;
           applyScale(autoFitScale(800, 1100));
+          centerCanvasScroll();
           subscribePageStrokes(pageKey);
           return;
         }
@@ -1157,6 +1166,7 @@
             }
 
             applyScale(autoFitScale(img.width, img.height));
+            centerCanvasScroll();
             document.getElementById('pageIndicator').textContent = `1/1`;
             subscribePageStrokes(pageKey);
           };
@@ -1167,7 +1177,6 @@
         if (doc.type === 'pdf') {
           try {
             if (!pdfDocInstance) {
-              // Base64データからPDFを読み込む
               let loadingTask;
               if (doc.dataUrl && doc.dataUrl.startsWith('data:')) {
                 const base64Data = doc.dataUrl.split(',')[1];
@@ -1196,6 +1205,7 @@
             document.getElementById('pageIndicator').textContent = `${currentPage}/${doc.numPages}`;
             
             applyScale(autoFitScale(viewport.width, viewport.height));
+            centerCanvasScroll();
             subscribePageStrokes(pageKey);
           } catch (err) {
             console.error(err);
@@ -1209,6 +1219,7 @@
             pdfCtx.font = '16px sans-serif';
             pdfCtx.textAlign = 'center';
             pdfCtx.fillText('PDFの読み込みに失敗しました', 300, 400);
+            centerCanvasScroll();
           }
         }
       }
