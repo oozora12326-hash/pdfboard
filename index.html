@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 階層フォルダ＆ピンチズーム対応版</title>
+  <title>PDF & Image Sync Board - 改良版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,6 +28,9 @@
     }
     .canvas-container {
       touch-action: pan-x pan-y;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     #passwordModal, input, button, select {
       touch-action: manipulation;
@@ -98,13 +101,11 @@
       <!-- Left Sidebar (Folders & Files) -->
       <aside id="sidebar" class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-200 z-10">
         <div class="p-3 border-b border-slate-800 flex flex-col gap-2">
+          <!-- 複数選択対応 (multiple) -->
           <button id="addImageDocBtn" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
-            <span>📷 画像 / ZWD・ZFD図面追加</span>
+            <span>📷 画像 / PDF / 図面追加</span>
           </button>
-          <button id="addUrlDocBtn" class="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
-            <span>＋ クラウドURLからPDF追加</span>
-          </button>
-          <input type="file" id="localImageInput" class="hidden" />
+          <input type="file" id="localImageInput" class="hidden" multiple accept="image/*,application/pdf,.zwd,.zfd" />
           <div class="flex gap-1.5">
             <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
               <span>📁</span><span>新規フォルダ</span>
@@ -135,7 +136,7 @@
     </div>
   </div>
 
-  <!-- Viewer Container (図面操作画面: ページリロードなしで瞬時に切替) -->
+  <!-- Viewer Container (図面操作画面) -->
   <div id="viewerContainer" class="hidden fixed inset-0 z-40 bg-slate-950 text-slate-100 flex flex-col overflow-hidden"></div>
 
   <!-- Firebase SDKs -->
@@ -217,8 +218,8 @@
       } catch(e) { console.error(e); }
     }
 
-    const STORAGE_KEY_STATE = 'pdf_sync_board_state_v3';
-    const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v2';
+    const STORAGE_KEY_STATE = 'pdf_sync_board_state_v4';
+    const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v3';
 
     const defaultState = {
       folders: [
@@ -322,20 +323,11 @@
           const docId = change.doc.id;
           if (change.type === 'added') {
             if (!state.documents.find(d => d.id === docId)) {
-              let pdfUrl = data.url || '';
-              if (pdfUrl.includes('drive.google.com')) {
-                const match = pdfUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-                if (match && match[1]) {
-                  pdfUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
-                }
-              }
-
               state.documents.push({
                 id: docId,
                 name: data.name,
                 folderId: data.folderId || 'folder-default',
                 type: data.type || 'pdf',
-                url: pdfUrl,
                 dataUrl: data.dataUrl || null,
                 numPages: 1
               });
@@ -369,7 +361,6 @@
       });
     }
 
-    // フォルダ作成（ルートまたは指定親フォルダ内）
     async function createFolder(parentId = null) {
       const promptTitle = parentId
         ? 'このフォルダ内に作成するサブフォルダ名を入力してください:'
@@ -418,83 +409,56 @@
       document.getElementById('localImageInput').click();
     });
 
+    // 複数ファイル（画像・PDF等）の一括追加処理
     document.getElementById('localImageInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
 
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const dataUrl = event.target.result;
-        const docName = file.name;
-        const lowerName = file.name.toLowerCase();
+      for (const file of files) {
+        await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            const dataUrl = event.target.result;
+            const docName = file.name;
+            const lowerName = file.name.toLowerCase();
 
-        let fileType = 'image';
-        if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
-          fileType = 'cad';
-        }
+            let fileType = 'image';
+            if (lowerName.endsWith('.pdf')) {
+              fileType = 'pdf';
+            } else if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
+              fileType = 'cad';
+            }
 
-        if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
-            name: docName,
-            folderId: 'folder-default',
-            type: fileType,
-            dataUrl: dataUrl,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        } else {
-          const newId = 'doc-img-' + Date.now();
-          state.documents.push({
-            id: newId,
-            name: docName,
-            folderId: 'folder-default',
-            type: fileType,
-            dataUrl: dataUrl,
-            numPages: 1
-          });
-          saveState();
-          renderSidebar();
-        }
-      };
-      reader.readAsDataURL(file);
-      e.target.value = '';
-    });
-
-    document.getElementById('addUrlDocBtn').addEventListener('click', async () => {
-      const docName = prompt('図面のファイル名（例: 2階配線図.pdf）を入力してください:', '建築平面図.pdf');
-      if (!docName || !docName.trim()) return;
-
-      const urlInput = prompt('GoogleドライブなどのPDF共有リンク（URL）を貼り付けてください:', 'https://drive.google.com/file/d/...');
-      if (!urlInput || !urlInput.trim()) return;
-
-      let rawUrl = urlInput.trim();
-      if (rawUrl.includes('drive.google.com')) {
-        const match = rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-        if (match && match[1]) {
-          rawUrl = `https://docs.google.com/uc?export=download&id=${match[1]}`;
-        }
+            if (isCloudMode) {
+              await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
+                name: docName,
+                folderId: 'folder-default',
+                type: fileType,
+                dataUrl: dataUrl,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+              });
+            } else {
+              const newId = 'doc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+              state.documents.push({
+                id: newId,
+                name: docName,
+                folderId: 'folder-default',
+                type: fileType,
+                dataUrl: dataUrl,
+                numPages: 1
+              });
+              saveState();
+            }
+            resolve();
+          };
+          reader.readAsDataURL(file);
+        });
       }
 
-      if (isCloudMode) {
-        await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
-          name: docName.trim(),
-          folderId: 'folder-default',
-          type: 'pdf',
-          url: rawUrl,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      } else {
-        const newId = 'doc-' + Date.now();
-        state.documents.push({
-          id: newId,
-          name: docName.trim(),
-          folderId: 'folder-default',
-          type: 'pdf',
-          url: rawUrl,
-          numPages: 1
-        });
-        saveState();
+      if (!isCloudMode) {
         renderSidebar();
       }
+      e.target.value = '';
     });
 
     async function reorderFolders(draggedId, targetId) {
@@ -503,7 +467,6 @@
       const targetFolder = state.folders.find(f => f.id === targetId);
       if (!draggedFolder || !targetFolder) return;
 
-      // 同じ階層内での並び替え、またはドロップ先と同じ階層へ移動
       draggedFolder.parentId = targetFolder.parentId || null;
 
       const draggedIdx = state.folders.findIndex(f => f.id === draggedId);
@@ -529,7 +492,6 @@
       }
     }
 
-    // 指定フォルダとその配下の全フォルダIDを再帰的に取得
     function getDescendantFolderIds(folderId) {
       let ids = [folderId];
       const children = state.folders.filter(f => f.parentId === folderId);
@@ -539,7 +501,6 @@
       return ids;
     }
 
-    // プルダウン用の階層順フォルダリスト生成
     function getFlatFolderOptions(parentId = null, depth = 0) {
       let options = [];
       const children = state.folders
@@ -600,7 +561,6 @@
             const draggedDocId = e.dataTransfer.getData('text/plain');
 
             if (draggedFolderId) {
-              // 自分自身や自分の子孫フォルダへのドロップを防止
               const descendants = getDescendantFolderIds(draggedFolderId);
               if (!descendants.includes(folder.id)) {
                 reorderFolders(draggedFolderId, folder.id);
@@ -613,16 +573,12 @@
           const header = document.createElement('div');
           header.className = 'px-2.5 py-2 bg-slate-800 flex items-center justify-between cursor-pointer text-xs font-semibold text-slate-200 gap-1';
 
-          const addSubFolderBtnHtml = `<button class="add-subfolder-btn px-1.5 py-0.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded text-[10px] shrink-0" title="このフォルダ内にサブフォルダを作成">＋📁</button>`;
-
-          let deleteFolderBtnHtml = '';
-          if (folder.id !== 'folder-default') {
-            deleteFolderBtnHtml = `<button class="delete-folder-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0" title="フォルダごと一括削除">🗑️</button>`;
-          }
+          const addSubFolderBtnHtml = `<button class="add-subfolder-btn px-1.5 py-0.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded text-[10px] shrink-0" title="サブフォルダ作成">＋📁</button>`;
+          let deleteFolderBtnHtml = folder.id !== 'folder-default' ? `<button class="delete-folder-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0" title="削除">🗑️</button>` : '';
 
           header.innerHTML = `
             <div class="flex items-center gap-1.5 truncate flex-1">
-              <span class="cursor-grab text-slate-400" title="ドラッグして並び替え">☰</span>
+              <span class="cursor-grab text-slate-400" title="並び替え">☰</span>
               <span>${folder.collapsed ? '📁' : '📂'}</span>
               <span class="truncate">${folder.name}</span>
               <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded-full text-slate-300">${docsInFolder.length}</span>
@@ -655,21 +611,17 @@
               const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
               const subFolderCount = targetFolderIds.length - 1;
 
-              const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダ` +
-                (subFolderCount > 0 ? `（サブフォルダ ${subFolderCount}個を含む）` : '') +
-                `と、中に入っている ${targetDocs.length}個のファイルをすべて完全に削除しますか？\n（この操作は元に戻せません）`;
+              const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダを削除しますか？\n（中身のファイル ${targetDocs.length}個も削除されます）`;
               if (!confirm(msg)) return;
 
               if (isCloudMode) {
                 const batch = db.batch();
                 targetDocs.forEach(d => {
-                  const docRef = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
-                  batch.delete(docRef);
+                  batch.delete(db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id));
                 });
                 targetFolderIds.forEach(fId => {
                   if (fId !== 'folder-default') {
-                    const folderRef = db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId);
-                    batch.delete(folderRef);
+                    batch.delete(db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId));
                   }
                 });
                 await batch.commit();
@@ -688,14 +640,12 @@
             const bodyEl = document.createElement('div');
             bodyEl.className = 'p-2 space-y-2';
 
-            // サブフォルダのコンテナ
             const subFolderContainer = document.createElement('div');
             subFolderContainer.className = 'pl-2 border-l-2 border-slate-700/70 space-y-1.5';
             if (childFolders.length > 0) {
               bodyEl.appendChild(subFolderContainer);
             }
 
-            // ファイル一覧
             if (docsInFolder.length === 0 && childFolders.length === 0) {
               bodyEl.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-2">ファイルをドラッグ、または「＋📁」でサブフォルダ作成</div>`;
             }
@@ -739,7 +689,7 @@
 
               item.querySelector('.delete-doc-btn').addEventListener('click', async (e) => {
                 e.stopPropagation();
-                if (!confirm(`「${doc.name}」を削除してもよろしいですか？`)) return;
+                if (!confirm(`「${doc.name}」を削除しますか？`)) return;
                 if (isCloudMode) {
                   await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(doc.id).delete();
                 } else {
@@ -754,10 +704,7 @@
 
             folderEl.appendChild(bodyEl);
 
-            // 再帰的にサブフォルダを描画
             if (childFolders.length > 0) {
-              const originalContainer = container;
-              // サブフォルダをsubFolderContainer内に描画
               renderSubFoldersInto(subFolderContainer, folder.id, depth + 1, flatOptions);
             }
           }
@@ -815,14 +762,14 @@
 
           header.innerHTML = `
             <div class="flex items-center gap-1.5 truncate flex-1">
-              <span class="cursor-grab text-slate-400" title="ドラッグして並び替え">☰</span>
+              <span class="cursor-grab text-slate-400" title="並び替え">☰</span>
               <span>${folder.collapsed ? '📁' : '📂'}</span>
               <span class="truncate">${folder.name}</span>
               <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded-full text-slate-300">${docsInFolder.length}</span>
             </div>
             <div class="flex items-center gap-1 shrink-0">
-              <button class="add-subfolder-btn px-1.5 py-0.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded text-[10px] shrink-0" title="このフォルダ内にサブフォルダを作成">＋📁</button>
-              <button class="delete-folder-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0" title="フォルダごと一括削除">🗑️</button>
+              <button class="add-subfolder-btn px-1.5 py-0.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded text-[10px] shrink-0" title="サブフォルダ作成">＋📁</button>
+              <button class="delete-folder-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0" title="削除">🗑️</button>
             </div>
           `;
 
@@ -841,11 +788,8 @@
             e.stopPropagation();
             const targetFolderIds = getDescendantFolderIds(folder.id);
             const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
-            const subFolderCount = targetFolderIds.length - 1;
 
-            const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダ` +
-              (subFolderCount > 0 ? `（サブフォルダ ${subFolderCount}個を含む）` : '') +
-              `と、中に入っている ${targetDocs.length}個のファイルをすべて完全に削除しますか？\n（この操作は元に戻せません）`;
+            const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダを削除しますか？`;
             if (!confirm(msg)) return;
 
             if (isCloudMode) {
@@ -923,7 +867,7 @@
 
               item.querySelector('.delete-doc-btn').addEventListener('click', async (e) => {
                 e.stopPropagation();
-                if (!confirm(`「${doc.name}」を削除してもよろしいですか？`)) return;
+                if (!confirm(`「${doc.name}」を削除しますか？`)) return;
                 if (isCloudMode) {
                   await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(doc.id).delete();
                 } else {
@@ -947,7 +891,7 @@
     }
 
     // =========================================================================
-    // ビューア画面（リロードなし高速切替＆ピンチズーム対応）
+    // ビューア画面
     // =========================================================================
     function closeViewer() {
       if (currentStrokeUnsubscribe) {
@@ -989,7 +933,7 @@
             </div>
 
             <div class="flex items-center gap-1.5 shrink-0">
-              <button id="exportImageBtn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition shrink-0" title="書き込みを含めて画像として保存">
+              <button id="exportImageBtn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition shrink-0" title="画像として保存">
                 <span>💾</span><span class="hidden sm:inline">保存</span>
               </button>
               <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
@@ -1005,9 +949,9 @@
             </div>
           </header>
 
-          <!-- キャンバス領域 -->
-          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-12">
-            <div id="canvasWrapper" class="relative shadow-2xl bg-white" style="transform: scale(0.6); transform-origin: top left; margin: 0 auto;">
+          <!-- キャンバス領域（中央配置・スクロール改善） -->
+          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-12 min-w-full min-h-full">
+            <div id="canvasWrapper" class="relative shadow-2xl bg-white m-auto" style="transform: scale(0.6); transform-origin: center center;">
               <canvas id="pdfCanvas" class="block"></canvas>
               <canvas id="drawCanvas" class="absolute inset-0"></canvas>
             </div>
@@ -1018,7 +962,7 @@
             <button id="undoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="元に戻る">↩️</button>
             <button id="redoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="やり直し">🔁</button>
             <div id="tbDivider1" class="bg-slate-700"></div>
-            <button data-tool="pan" class="tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow" title="移動・スクロール">✋</button>
+            <button data-tool="pan" class="tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow" title="移動">✋</button>
             <button data-tool="pen" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="ペン">✏️</button>
             <button data-tool="marker" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="マーカー">🖍️</button>
             <button data-tool="rect" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="四角枠">⬜</button>
@@ -1026,7 +970,7 @@
             <button id="addPhotoBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="写真貼り付け">📷</button>
             <input type="file" id="photoFileInput" accept="image/*" class="hidden" />
             <button data-tool="eraser" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="消しゴム">🧹</button>
-            <button id="clearAllBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center bg-red-600/20 text-red-300 hover:bg-red-600 hover:text-white transition" title="一括クリア（全消し）">🗑️</button>
+            <button id="clearAllBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center bg-red-600/20 text-red-300 hover:bg-red-600 hover:text-white transition" title="一括クリア">🗑️</button>
             <div id="tbDivider2" class="bg-slate-700"></div>
             <input type="color" id="colorPicker" value="#ef4444" class="w-7 h-7 rounded-md cursor-pointer bg-transparent border-0 p-0" title="色選択" />
             <select id="lineWidthSelect" class="bg-slate-950 text-[10px] text-slate-200 rounded-md px-1 py-1 border border-slate-700 text-center w-8">
@@ -1090,7 +1034,7 @@
         document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
       }
 
-      // ピンチイン・ピンチアウト（2本指ジェスチャー）実装
+      // ピンチイン・ピンチアウト対応
       let initialPinchDistance = null;
       let initialPinchScale = currentScale;
 
@@ -1109,7 +1053,7 @@
 
       canvasContainer.addEventListener('touchmove', (e) => {
         if (e.touches.length === 2 && initialPinchDistance !== null) {
-          e.preventDefault(); // ブラウザ全体のズームを防止し、図面のみ拡大縮小
+          e.preventDefault();
           const currentDistance = getTouchDistance(e.touches);
           const ratio = currentDistance / initialPinchDistance;
           applyScale(initialPinchScale * ratio);
@@ -1190,6 +1134,7 @@
           pdfCtx.fillText('会議室 A', 180, 285);
           pdfCtx.fillText('執務スペース', 480, 285);
           document.getElementById('pageIndicator').textContent = `${currentPage}/2`;
+          applyScale(autoFitScale(800, 1100));
           subscribePageStrokes(pageKey);
           return;
         }
@@ -1222,20 +1167,42 @@
         if (doc.type === 'pdf') {
           try {
             if (!pdfDocInstance) {
-              pdfDocInstance = await pdfjsLib.getDocument(doc.url).promise;
+              // Base64データからPDFを読み込む
+              let loadingTask;
+              if (doc.dataUrl && doc.dataUrl.startsWith('data:')) {
+                const base64Data = doc.dataUrl.split(',')[1];
+                const binaryString = atob(base64Data);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                loadingTask = pdfjsLib.getDocument({ data: bytes });
+              } else {
+                loadingTask = pdfjsLib.getDocument(doc.dataUrl);
+              }
+              pdfDocInstance = await loadingTask.promise;
               doc.numPages = pdfDocInstance.numPages;
             }
+
             const page = await pdfDocInstance.getPage(currentPage);
             const viewport = page.getViewport({ scale: 1.5 });
             pdfCanvas.width = viewport.width;
             pdfCanvas.height = viewport.height;
             drawCanvas.width = viewport.width;
             drawCanvas.height = viewport.height;
+            
             await page.render({ canvasContext: pdfCtx, viewport }).promise;
             document.getElementById('pageIndicator').textContent = `${currentPage}/${doc.numPages}`;
+            
+            applyScale(autoFitScale(viewport.width, viewport.height));
             subscribePageStrokes(pageKey);
           } catch (err) {
             console.error(err);
+            pdfCanvas.width = 600;
+            pdfCanvas.height = 800;
+            drawCanvas.width = 600;
+            drawCanvas.height = 800;
             pdfCtx.fillStyle = '#1e293b';
             pdfCtx.fillRect(0, 0, 600, 800);
             pdfCtx.fillStyle = '#ef4444';
