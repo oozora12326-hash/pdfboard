@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 中央表示完全対応版</title>
+  <title>PDF & Image Sync Board - 拡大見切れ修正版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -945,7 +945,7 @@
           </header>
 
           <!-- キャンバス領域 -->
-          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-6">
+          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-12">
             <div id="canvasOuterSizer" class="mx-auto flex items-center justify-center min-w-full min-h-full">
               <div id="canvasScaleBox" class="relative shrink-0">
                 <div id="canvasWrapper" class="relative shadow-2xl bg-white" style="transform: scale(0.6); transform-origin: top left;">
@@ -1029,8 +1029,10 @@
       const canvasContainer = document.getElementById('canvasContainer');
 
       function applyScale(newScale) {
-        currentScale = Math.max(0.1, Math.min(4.0, +newScale.toFixed(3)));
+        currentScale = Math.max(0.1, Math.min(5.0, +newScale.toFixed(3)));
         wrapper.style.transform = `scale(${currentScale})`;
+        
+        // 拡大・縮小時に外枠のサイズを連動させてスクロール範囲を正しく確保
         if (scaleBox && pdfCanvas.width > 0 && pdfCanvas.height > 0) {
           scaleBox.style.width = `${Math.round(pdfCanvas.width * currentScale)}px`;
           scaleBox.style.height = `${Math.round(pdfCanvas.height * currentScale)}px`;
@@ -1118,8 +1120,8 @@
       }
 
       function autoFitScale(imgWidth, imgHeight) {
-        const maxW = Math.max(200, canvasContainer.clientWidth - 48);
-        const maxH = Math.max(200, canvasContainer.clientHeight - 48);
+        const maxW = Math.max(200, canvasContainer.clientWidth - 96);
+        const maxH = Math.max(200, canvasContainer.clientHeight - 96);
         const scaleX = maxW / imgWidth;
         const scaleY = maxH / imgHeight;
         return Math.max(0.1, Math.min(scaleX, scaleY, 1.0));
@@ -1368,10 +1370,10 @@
       });
 
       document.getElementById('zoomInBtn').addEventListener('click', () => {
-        applyScale(currentScale + 0.1);
+        applyScale(currentScale + 0.15);
       });
       document.getElementById('zoomOutBtn').addEventListener('click', () => {
-        applyScale(currentScale - 0.1);
+        applyScale(currentScale - 0.15);
       });
 
       document.getElementById('undoBtn').addEventListener('click', async () => {
