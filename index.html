@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 中央配置改良版</title>
+  <title>PDF & Image Sync Board - 中央表示完全対応版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,9 +28,6 @@
     }
     .canvas-container {
       touch-action: pan-x pan-y;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       box-sizing: border-box;
     }
     #passwordModal, input, button, select {
@@ -507,7 +504,7 @@
         .sort((a, b) => (a.order || 0) - (b.order || 0));
 
       children.forEach(f => {
-        const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : '';
+        const prefix = depth > 0 ? ' '.repeat(depth) + '└ ' : '';
         options.push({ id: f.id, label: `${prefix}📁 ${f.name}` });
         options = options.concat(getFlatFolderOptions(f.id, depth + 1));
       });
@@ -947,11 +944,15 @@
             </div>
           </header>
 
-          <!-- キャンバス領域（中央配置） -->
-          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-12">
-            <div id="canvasWrapper" class="relative shadow-2xl bg-white m-auto" style="transform: scale(0.6); transform-origin: center center;">
-              <canvas id="pdfCanvas" class="block"></canvas>
-              <canvas id="drawCanvas" class="absolute inset-0"></canvas>
+          <!-- キャンバス領域 -->
+          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90 p-6">
+            <div id="canvasOuterSizer" class="mx-auto flex items-center justify-center min-w-full min-h-full">
+              <div id="canvasScaleBox" class="relative shrink-0">
+                <div id="canvasWrapper" class="relative shadow-2xl bg-white" style="transform: scale(0.6); transform-origin: top left;">
+                  <canvas id="pdfCanvas" class="block"></canvas>
+                  <canvas id="drawCanvas" class="absolute inset-0"></canvas>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1024,22 +1025,28 @@
       const drawCanvas = document.getElementById('drawCanvas');
       const pdfCtx = pdfCanvas.getContext('2d');
       const wrapper = document.getElementById('canvasWrapper');
+      const scaleBox = document.getElementById('canvasScaleBox');
       const canvasContainer = document.getElementById('canvasContainer');
 
       function applyScale(newScale) {
         currentScale = Math.max(0.1, Math.min(4.0, +newScale.toFixed(3)));
         wrapper.style.transform = `scale(${currentScale})`;
+        if (scaleBox && pdfCanvas.width > 0 && pdfCanvas.height > 0) {
+          scaleBox.style.width = `${Math.round(pdfCanvas.width * currentScale)}px`;
+          scaleBox.style.height = `${Math.round(pdfCanvas.height * currentScale)}px`;
+        }
         document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
       }
 
-      // スクロール位置を中央に合わせる関数
       function centerCanvasScroll() {
-        requestAnimationFrame(() => {
+        setTimeout(() => {
           if (canvasContainer) {
-            canvasContainer.scrollLeft = (canvasContainer.scrollWidth - canvasContainer.clientWidth) / 2;
-            canvasContainer.scrollTop = (canvasContainer.scrollHeight - canvasContainer.clientHeight) / 2;
+            const targetX = (canvasContainer.scrollWidth - canvasContainer.clientWidth) / 2;
+            const targetY = (canvasContainer.scrollHeight - canvasContainer.clientHeight) / 2;
+            canvasContainer.scrollLeft = Math.max(0, targetX);
+            canvasContainer.scrollTop = Math.max(0, targetY);
           }
-        });
+        }, 50);
       }
 
       // ピンチイン・ピンチアウト対応
@@ -1111,8 +1118,8 @@
       }
 
       function autoFitScale(imgWidth, imgHeight) {
-        const maxW = canvasContainer.clientWidth - 80;
-        const maxH = canvasContainer.clientHeight - 80;
+        const maxW = Math.max(200, canvasContainer.clientWidth - 48);
+        const maxH = Math.max(200, canvasContainer.clientHeight - 48);
         const scaleX = maxW / imgWidth;
         const scaleY = maxH / imgHeight;
         return Math.max(0.1, Math.min(scaleX, scaleY, 1.0));
@@ -1200,10 +1207,10 @@
             pdfCanvas.height = viewport.height;
             drawCanvas.width = viewport.width;
             drawCanvas.height = viewport.height;
-            
+
             await page.render({ canvasContext: pdfCtx, viewport }).promise;
             document.getElementById('pageIndicator').textContent = `${currentPage}/${doc.numPages}`;
-            
+
             applyScale(autoFitScale(viewport.width, viewport.height));
             centerCanvasScroll();
             subscribePageStrokes(pageKey);
@@ -1219,6 +1226,7 @@
             pdfCtx.font = '16px sans-serif';
             pdfCtx.textAlign = 'center';
             pdfCtx.fillText('PDFの読み込みに失敗しました', 300, 400);
+            applyScale(autoFitScale(600, 800));
             centerCanvasScroll();
           }
         }
