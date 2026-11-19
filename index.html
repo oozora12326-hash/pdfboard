@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - ページ一括保存対応版</title>
+  <title>PDF & Image Sync Board - 連続書き改善・一括保存完全版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1056,37 +1056,43 @@
             shiftFolderOrder(folder.id, 1);
           });
 
-          header.querySelector('.add-subfolder-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            createFolder(folder.id);
-          });
+          const addSubBtn = header.querySelector('.add-subfolder-btn');
+          if (addSubBtn) {
+            addSubBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              createFolder(folder.id);
+            });
+          }
 
-          header.querySelector('.delete-folder-btn').addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const targetFolderIds = getDescendantFolderIds(folder.id);
-            const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
+          const delFolderBtn = header.querySelector('.delete-folder-btn');
+          if (delFolderBtn) {
+            delFolderBtn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const targetFolderIds = getDescendantFolderIds(folder.id);
+              const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
 
-            const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダを削除しますか？`;
-            if (!confirm(msg)) return;
+              const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダを削除しますか？`;
+              if (!confirm(msg)) return;
 
-            if (isCloudMode) {
-              const batch = db.batch();
-              targetDocs.forEach(d => {
-                batch.delete(db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id));
-              });
-              targetFolderIds.forEach(fId => {
-                if (fId !== 'folder-default') {
-                  batch.delete(db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId));
-                }
-              });
-              await batch.commit();
-            } else {
-              state.documents = state.documents.filter(d => !targetFolderIds.includes(d.folderId));
-              state.folders = state.folders.filter(f => !targetFolderIds.includes(f.id));
-              saveState();
-              renderSidebar();
-            }
-          });
+              if (isCloudMode) {
+                const batch = db.batch();
+                targetDocs.forEach(d => {
+                  batch.delete(db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id));
+                });
+                targetFolderIds.forEach(fId => {
+                  if (fId !== 'folder-default') {
+                    batch.delete(db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId));
+                  }
+                });
+                await batch.commit();
+              } else {
+                state.documents = state.documents.filter(d => !targetFolderIds.includes(d.folderId));
+                state.folders = state.folders.filter(f => !targetFolderIds.includes(f.id));
+                saveState();
+                renderSidebar();
+              }
+            });
+          }
 
           folderEl.appendChild(header);
 
@@ -1155,7 +1161,7 @@
         <div id="viewerApp" class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
           <!-- 保存方法選択モーダル -->
           <div id="saveChoiceModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xs w-full p-5 shadow-2xl space-y-4">
+            <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xs w-full p-5 shadow-2xl space-y-3.5">
               <div class="text-center space-y-1">
                 <span class="text-2xl">💾</span>
                 <h3 class="font-bold text-sm text-white">保存方法の選択</h3>
@@ -1163,10 +1169,13 @@
               </div>
               <div class="flex flex-col gap-2">
                 <button id="saveCurrentPageBtn" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition">
-                  このページのみ保存
+                  このページのみ保存（PNG）
                 </button>
-                <button id="saveAllPagesBtn" class="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
-                  すべてのページを一括保存
+                <button id="saveAllPagesShareBtn" class="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
+                  全ページをまとめて共有・保存
+                </button>
+                <button id="saveAllPagesMergedBtn" class="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition">
+                  全ページを1枚の縦長画像で保存
                 </button>
                 <button id="cancelSaveChoiceBtn" class="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition">
                   キャンセル
@@ -1280,6 +1289,23 @@
       let redoStack = [];
       let selectedImageId = null;
       const loadedImagesCache = {};
+
+      // クラウド同期バッチ用
+      let pendingCloudSyncTimer = null;
+      const pendingCloudStrokes = new Map();
+
+      function flushCloudStrokes() {
+        if (!isCloudMode || pendingCloudStrokes.size === 0) return;
+        const batch = db.batch();
+        pendingCloudStrokes.forEach(({ pageKey, strokeId, payload }) => {
+          const ref = db.collection('rooms').doc(ROOM_ID)
+            .collection('annotations').doc(pageKey)
+            .collection('strokes').doc(strokeId);
+          batch.set(ref, payload);
+        });
+        pendingCloudStrokes.clear();
+        batch.commit().catch(err => console.error('Batch stroke sync failed:', err));
+      }
 
       const pdfCanvas = document.getElementById('pdfCanvas');
       const drawCanvas = document.getElementById('drawCanvas');
@@ -1418,6 +1444,7 @@
       }
 
       async function renderPage() {
+        flushCloudStrokes();
         const pageKey = `${doc.id}_p${currentPage}`;
         if (isCloudMode) {
           updatePresence(doc.id, currentPage);
@@ -1507,19 +1534,29 @@
         }
       }
 
+      // 連続書き時の負荷を抑えるためポイント数が多い場合は間引いて丸判定
       function trySnapToCircle(stroke) {
         if (stroke.tool !== 'pen' || !stroke.points || stroke.points.length < 14) return stroke;
-        const pts = stroke.points;
+        let pts = stroke.points;
+        if (pts.length > 180) {
+          const step = Math.ceil(pts.length / 180);
+          const sampled = [];
+          for (let i = 0; i < pts.length; i += step) sampled.push(pts[i]);
+          sampled.push(pts[pts.length - 1]);
+          pts = sampled;
+        }
+
         const start = pts[0];
         const end = pts[pts.length - 1];
 
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        pts.forEach(p => {
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
           if (p.x < minX) minX = p.x;
           if (p.x > maxX) maxX = p.x;
           if (p.y < minY) minY = p.y;
           if (p.y > maxY) maxY = p.y;
-        });
+        }
 
         const width = maxX - minX;
         const height = maxY - minY;
@@ -1535,14 +1572,16 @@
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
         let sumR = 0;
-        pts.forEach(p => { sumR += Math.hypot(p.x - cx, p.y - cy); });
+        for (let i = 0; i < pts.length; i++) {
+          sumR += Math.hypot(pts[i].x - cx, pts[i].y - cy);
+        }
         const avgR = sumR / pts.length;
 
         let maxDev = 0;
-        pts.forEach(p => {
-          const dev = Math.abs(Math.hypot(p.x - cx, p.y - cy) - avgR);
+        for (let i = 0; i < pts.length; i++) {
+          const dev = Math.abs(Math.hypot(pts[i].x - cx, pts[i].y - cy) - avgR);
           if (dev > maxDev) maxDev = dev;
-        });
+        }
 
         if (maxDev < avgR * 0.26) {
           return {
@@ -1662,67 +1701,63 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      }
+
+      async function renderPageToCanvas(pageNum) {
+        const strokes = await getStrokesForPage(pageNum);
+        await preloadImagesInStrokes(strokes);
+
+        const outCanvas = document.createElement('canvas');
+        const outCtx = outCanvas.getContext('2d');
+
+        if (pageNum === currentPage) {
+          outCanvas.width = pdfCanvas.width;
+          outCanvas.height = pdfCanvas.height;
+          outCtx.drawImage(pdfCanvas, 0, 0);
+          renderStrokesToContext(outCtx, strokes, false);
+          return outCanvas;
+        }
+
+        if (doc.type === 'sample') {
+          outCanvas.width = 800;
+          outCanvas.height = 1100;
+          outCtx.fillStyle = '#ffffff';
+          outCtx.fillRect(0, 0, 800, 1100);
+          outCtx.strokeStyle = '#334155';
+          outCtx.lineWidth = 3;
+          outCtx.strokeRect(50, 50, 700, 1000);
+          outCtx.fillStyle = '#0f172a';
+          outCtx.font = 'bold 24px sans-serif';
+          outCtx.fillText(`サンプル建築平面図 - ${pageNum}階`, 80, 100);
+          outCtx.strokeRect(100, 160, 280, 240);
+          outCtx.strokeRect(380, 160, 320, 240);
+          outCtx.fillText('会議室 A', 180, 285);
+          outCtx.fillText('執務スペース', 480, 285);
+        } else if (doc.type === 'pdf') {
+          const pdfInstance = await getPdfInstance();
+          const page = await pdfInstance.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
+          outCanvas.width = viewport.width;
+          outCanvas.height = viewport.height;
+          await page.render({ canvasContext: outCtx, viewport }).promise;
+        } else {
+          outCanvas.width = pdfCanvas.width;
+          outCanvas.height = pdfCanvas.height;
+          outCtx.drawImage(pdfCanvas, 0, 0);
+        }
+
+        renderStrokesToContext(outCtx, strokes, false);
+        return outCanvas;
       }
 
       async function exportSinglePage(pageNum) {
         const baseName = doc.name.replace(/\.[^/.]+$/, "");
         const fileName = `${baseName}_p${pageNum}.png`;
-        const strokes = await getStrokesForPage(pageNum);
-        await preloadImagesInStrokes(strokes);
-
-        if (pageNum === currentPage) {
-          const exportCanvas = document.createElement('canvas');
-          exportCanvas.width = pdfCanvas.width;
-          exportCanvas.height = pdfCanvas.height;
-          const exportCtx = exportCanvas.getContext('2d');
-          exportCtx.drawImage(pdfCanvas, 0, 0);
-          renderStrokesToContext(exportCtx, strokes, false);
-
-          await new Promise((resolve) => {
-            exportCanvas.toBlob((blob) => {
-              if (blob) triggerBlobDownload(blob, fileName);
-              resolve();
-            }, 'image/png');
-          });
-          return;
-        }
-
-        const offBaseCanvas = document.createElement('canvas');
-        const offBaseCtx = offBaseCanvas.getContext('2d');
-
-        if (doc.type === 'sample') {
-          offBaseCanvas.width = 800;
-          offBaseCanvas.height = 1100;
-          offBaseCtx.fillStyle = '#ffffff';
-          offBaseCtx.fillRect(0, 0, 800, 1100);
-          offBaseCtx.strokeStyle = '#334155';
-          offBaseCtx.lineWidth = 3;
-          offBaseCtx.strokeRect(50, 50, 700, 1000);
-          offBaseCtx.fillStyle = '#0f172a';
-          offBaseCtx.font = 'bold 24px sans-serif';
-          offBaseCtx.fillText(`サンプル建築平面図 - ${pageNum}階`, 80, 100);
-          offBaseCtx.strokeRect(100, 160, 280, 240);
-          offBaseCtx.strokeRect(380, 160, 320, 240);
-          offBaseCtx.fillText('会議室 A', 180, 285);
-          offBaseCtx.fillText('執務スペース', 480, 285);
-        } else if (doc.type === 'pdf') {
-          const pdfInstance = await getPdfInstance();
-          const page = await pdfInstance.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 1.5 });
-          offBaseCanvas.width = viewport.width;
-          offBaseCanvas.height = viewport.height;
-          await page.render({ canvasContext: offBaseCtx, viewport }).promise;
-        } else {
-          offBaseCanvas.width = pdfCanvas.width;
-          offBaseCanvas.height = pdfCanvas.height;
-          offBaseCtx.drawImage(pdfCanvas, 0, 0);
-        }
-
-        renderStrokesToContext(offBaseCtx, strokes, false);
+        const canvas = await renderPageToCanvas(pageNum);
 
         await new Promise((resolve) => {
-          offBaseCanvas.toBlob((blob) => {
+          canvas.toBlob((blob) => {
             if (blob) triggerBlobDownload(blob, fileName);
             resolve();
           }, 'image/png');
@@ -1733,6 +1768,7 @@
       const saveChoiceDesc = document.getElementById('saveChoiceDesc');
 
       document.getElementById('exportImageBtn').addEventListener('click', () => {
+        flushCloudStrokes();
         const totalPages = doc.type === 'sample' ? 2 : (doc.numPages || 1);
         saveChoiceDesc.textContent = `現在 ${currentPage}/${totalPages} ページ目を表示中です。保存方法を選択してください。`;
         saveChoiceModal.classList.remove('hidden');
@@ -1752,23 +1788,89 @@
         }
       });
 
-      document.getElementById('saveAllPagesBtn').addEventListener('click', async () => {
+      document.getElementById('saveAllPagesShareBtn').addEventListener('click', async () => {
         saveChoiceModal.classList.add('hidden');
         const totalPages = doc.type === 'sample' ? 2 : (doc.numPages || 1);
+        const baseName = doc.name.replace(/\.[^/.]+$/, "");
+
         try {
+          const files = [];
           for (let p = 1; p <= totalPages; p++) {
-            await exportSinglePage(p);
-            if (p < totalPages) {
-              await new Promise(r => setTimeout(r, 400));
+            const canvas = await renderPageToCanvas(p);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (blob) {
+              files.push(new File([blob], `${baseName}_p${p}.png`, { type: 'image/png' }));
+            }
+          }
+
+          if (files.length > 0 && navigator.canShare && navigator.canShare({ files })) {
+            await navigator.share({
+              files,
+              title: `${baseName}（全${totalPages}ページ）`
+            });
+            return;
+          }
+
+          for (let p = 0; p < files.length; p++) {
+            triggerBlobDownload(files[p], files[p].name);
+            if (p < files.length - 1) {
+              await new Promise(r => setTimeout(r, 500));
             }
           }
           alert(`全 ${totalPages} ページの保存処理を実行しました。`);
         } catch (err) {
+          if (err && err.name === 'AbortError') return;
           console.error(err);
-          alert('一括保存中にエラーが発生しました。');
+          alert('一括保存中にエラーが発生しました。「1枚の縦長画像で保存」もお試しください。');
         }
       });
 
+      document.getElementById('saveAllPagesMergedBtn').addEventListener('click', async () => {
+        saveChoiceModal.classList.add('hidden');
+        const totalPages = doc.type === 'sample' ? 2 : (doc.numPages || 1);
+        const baseName = doc.name.replace(/\.[^/.]+$/, "");
+
+        try {
+          const canvases = [];
+          let maxW = 0;
+          let totalH = 0;
+          const gap = 20;
+
+          for (let p = 1; p <= totalPages; p++) {
+            const c = await renderPageToCanvas(p);
+            canvases.push(c);
+            if (c.width > maxW) maxW = c.width;
+            totalH += c.height;
+          }
+          totalH += gap * Math.max(0, canvases.length - 1);
+
+          const mergedCanvas = document.createElement('canvas');
+          mergedCanvas.width = maxW;
+          mergedCanvas.height = totalH;
+          const mergedCtx = mergedCanvas.getContext('2d');
+          mergedCtx.fillStyle = '#0f172a';
+          mergedCtx.fillRect(0, 0, maxW, totalH);
+
+          let offsetY = 0;
+          canvases.forEach((c) => {
+            const offsetX = Math.floor((maxW - c.width) / 2);
+            mergedCtx.drawImage(c, offsetX, offsetY);
+            offsetY += c.height + gap;
+          });
+
+          await new Promise((resolve) => {
+            mergedCanvas.toBlob((blob) => {
+              if (blob) triggerBlobDownload(blob, `${baseName}_全${totalPages}ページ.png`);
+              resolve();
+            }, 'image/png');
+          });
+        } catch (err) {
+          console.error(err);
+          alert('結合画像の保存に失敗しました。');
+        }
+      });
+
+      // 描画は即時反映し、クラウド送信は250msまとめて非同期実行
       function saveAndRedraw(stroke) {
         const key = `${doc.id}_p${currentPage}`;
         if (!annotations[key]) annotations[key] = [];
@@ -1782,10 +1884,9 @@
 
         if (isCloudMode) {
           const payload = { ...stroke, createdAt: Date.now() };
-          db.collection('rooms').doc(ROOM_ID)
-            .collection('annotations').doc(key)
-            .collection('strokes').doc(strokeId).set(payload)
-            .catch(err => console.error('Stroke sync failed:', err));
+          pendingCloudStrokes.set(strokeId, { pageKey: key, strokeId, payload });
+          if (pendingCloudSyncTimer) clearTimeout(pendingCloudSyncTimer);
+          pendingCloudSyncTimer = setTimeout(flushCloudStrokes, 250);
         } else {
           saveAnnotationsData();
         }
@@ -1794,16 +1895,19 @@
       function persistStrokeUpdate(stroke) {
         const key = `${doc.id}_p${currentPage}`;
         if (isCloudMode) {
-          db.collection('rooms').doc(ROOM_ID)
-            .collection('annotations').doc(key)
-            .collection('strokes').doc(stroke.id).set({ ...stroke }, { merge: true })
-            .catch(err => console.error('Stroke update failed:', err));
+          const payload = { ...stroke, createdAt: stroke.createdAt || Date.now() };
+          pendingCloudStrokes.set(stroke.id, { pageKey: key, strokeId: stroke.id, payload });
+          if (pendingCloudSyncTimer) clearTimeout(pendingCloudSyncTimer);
+          pendingCloudSyncTimer = setTimeout(flushCloudStrokes, 200);
         } else {
           saveAnnotationsData();
         }
       }
 
       document.getElementById('clearAllBtn').addEventListener('click', async () => {
+        if (pendingCloudSyncTimer) clearTimeout(pendingCloudSyncTimer);
+        pendingCloudStrokes.clear();
+
         const key = `${doc.id}_p${currentPage}`;
         const strokes = annotations[key] || [];
         if (strokes.length === 0) {
@@ -1851,6 +1955,7 @@
       });
 
       document.getElementById('undoBtn').addEventListener('click', async () => {
+        flushCloudStrokes();
         const key = `${doc.id}_p${currentPage}`;
         const strokes = annotations[key];
         if (!strokes || strokes.length === 0) return;
@@ -1970,6 +2075,7 @@
       }
 
       drawCanvas.addEventListener('pointerdown', (e) => {
+        // 直前のストロークが未確定で残っていれば即座に確定し、新しいポインターへ確実に引き継ぐ
         if (isDrawing && currentStroke) {
           const prevStroke = currentStroke;
           isDrawing = false;
@@ -1978,7 +2084,7 @@
         }
 
         if (activePointerId !== null && activePointerId !== e.pointerId) {
-          return;
+          try { drawCanvas.releasePointerCapture(activePointerId); } catch (_) {}
         }
         activePointerId = e.pointerId;
 
