@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 完全安定版</title>
+  <title>PDF & Image Sync Board - 写真移動・連続ペン対応版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -158,7 +158,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <script>
-    const APP_PASSWORD = "0909";
+    const APP_PASSWORD = "1234";
 
     const FIREBASE_CONFIG = {
       apiKey: "AIzaSyDuVRjuskinN49x36sB0TmfxD7NNshTT8",
@@ -417,9 +417,6 @@
 
     document.getElementById('createFolderBtn').addEventListener('click', () => createFolder(null));
 
-    // =========================================================================
-    // フォルダ ＆ 書類の並び替え・移動ロジック
-    // =========================================================================
     async function saveFoldersOrderToStore() {
       if (isCloudMode) {
         const batch = db.batch();
@@ -586,7 +583,6 @@
       document.getElementById('localImageInput').click();
     });
 
-    // ファイル追加処理：同期の競合を防ぐためawaitで確実に保存完了を待つように修正
     document.getElementById('localImageInput').addEventListener('change', async (e) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
@@ -656,7 +652,7 @@
         .sort((a, b) => (a.order || 0) - (b.order || 0));
 
       children.forEach(f => {
-        const prefix = depth > 0 ? ' '.repeat(depth) + '└ ' : '';
+        const prefix = depth > 0 ? '　'.repeat(depth) + '└ ' : '';
         options.push({ id: f.id, label: `${prefix}📁 ${f.name}` });
         options = options.concat(getFlatFolderOptions(f.id, depth + 1));
       });
@@ -1202,8 +1198,8 @@
             <button id="undoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="元に戻る">↩️</button>
             <button id="redoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="やり直し">🔁</button>
             <div id="tbDivider1" class="bg-slate-700"></div>
-            <button data-tool="pan" class="tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow" title="移動">✋</button>
-            <button data-tool="pen" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="ペン（丸を自動補正）">✏️</button>
+            <button data-tool="pan" class="tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow" title="移動（写真の移動も可能）">✋</button>
+            <button data-tool="pen" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="ペン（連続書き・丸補正）">✏️</button>
             <button data-tool="marker" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="マーカー">🖍️</button>
             <button data-tool="rect" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="四角枠">⬜</button>
             <button data-tool="text" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="テキスト">🔤</button>
@@ -1260,6 +1256,7 @@
       let currentWidth = 1;
       let pdfDocInstance = null;
       let redoStack = [];
+      let selectedImageId = null;
       const loadedImagesCache = {};
 
       const pdfCanvas = document.getElementById('pdfCanvas');
@@ -1486,7 +1483,7 @@
       }
 
       function trySnapToCircle(stroke) {
-        if (stroke.tool !== 'pen' || !stroke.points || stroke.points.length < 10) return stroke;
+        if (stroke.tool !== 'pen' || !stroke.points || stroke.points.length < 14) return stroke;
         const pts = stroke.points;
         const start = pts[0];
         const end = pts[pts.length - 1];
@@ -1502,13 +1499,13 @@
         const width = maxX - minX;
         const height = maxY - minY;
         const size = Math.max(width, height);
-        if (size < 20) return stroke;
+        if (size < 25) return stroke;
 
         const aspectRatio = Math.min(width, height) / size;
-        if (aspectRatio < 0.65) return stroke;
+        if (aspectRatio < 0.72) return stroke;
 
         const closeDist = Math.hypot(end.x - start.x, end.y - start.y);
-        if (closeDist > size * 0.4) return stroke;
+        if (closeDist > size * 0.25) return stroke;
 
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
@@ -1522,7 +1519,7 @@
           if (dev > maxDev) maxDev = dev;
         });
 
-        if (maxDev < avgR * 0.32) {
+        if (maxDev < avgR * 0.26) {
           return {
             tool: 'circle',
             color: stroke.color,
@@ -1544,8 +1541,18 @@
         strokes.forEach(s => {
           ctx.save();
           if (s.tool === 'image' && s.dataUrl) {
+            const renderPhoto = (imgObj) => {
+              ctx.drawImage(imgObj, s.x, s.y, s.width, s.height);
+              if (s.id === selectedImageId) {
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([6, 4]);
+                ctx.strokeRect(s.x, s.y, s.width, s.height);
+              }
+            };
+
             if (loadedImagesCache[s.id]) {
-              ctx.drawImage(loadedImagesCache[s.id], s.x, s.y, s.width, s.height);
+              renderPhoto(loadedImagesCache[s.id]);
             } else {
               const img = new Image();
               img.onload = () => {
@@ -1606,6 +1613,17 @@
         }
       }
 
+      async function persistStrokeUpdate(stroke) {
+        const key = `${doc.id}_p${currentPage}`;
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID)
+            .collection('annotations').doc(key)
+            .collection('strokes').doc(stroke.id).set({ ...stroke }, { merge: true });
+        } else {
+          saveAnnotationsData();
+        }
+      }
+
       document.getElementById('exportImageBtn').addEventListener('click', () => {
         try {
           const exportCanvas = document.createElement('canvas');
@@ -1649,6 +1667,7 @@
         }
 
         annotations[key] = [];
+        selectedImageId = null;
         drawOverlay();
 
         if (isCloudMode) {
@@ -1668,11 +1687,11 @@
       });
 
       document.getElementById('prevPageBtn').addEventListener('click', () => {
-        if (currentPage > 1) { currentPage--; renderPage(); }
+        if (currentPage > 1) { currentPage--; selectedImageId = null; renderPage(); }
       });
       document.getElementById('nextPageBtn').addEventListener('click', () => {
         const max = doc.type === 'sample' ? 2 : (doc.numPages || 1);
-        if (currentPage < max) { currentPage++; renderPage(); }
+        if (currentPage < max) { currentPage++; selectedImageId = null; renderPage(); }
       });
 
       document.getElementById('zoomInBtn').addEventListener('click', () => {
@@ -1688,6 +1707,7 @@
         if (!strokes || strokes.length === 0) return;
 
         const popped = strokes.pop();
+        if (popped.id === selectedImageId) selectedImageId = null;
         redoStack.push(popped);
         drawOverlay();
 
@@ -1727,16 +1747,20 @@
         reader.onload = (event) => {
           const dataUrl = event.target.result;
           const img = new Image();
-          img.onload = () => {
-            const maxW = 200;
-            saveAndRedraw({
+          img.onload = async () => {
+            const maxW = 220;
+            const aspect = img.height / (img.width || 1);
+            await saveAndRedraw({
               tool: 'image',
               dataUrl: dataUrl,
               x: 100,
-              y: 100,
+              y: 120,
               width: maxW,
-              height: img.height * (maxW / img.width)
+              height: Math.round(maxW * aspect)
             });
+            // 追加後、すぐに移動しやすいようパンツールに切り替える
+            const panBtn = document.querySelector('.tool-btn[data-tool="pan"]');
+            if (panBtn) panBtn.click();
           };
           img.src = dataUrl;
         };
@@ -1747,6 +1771,10 @@
       document.querySelectorAll('.tool-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           activeTool = btn.dataset.tool;
+          if (activeTool !== 'pan') {
+            selectedImageId = null;
+            drawOverlay();
+          }
           document.querySelectorAll('.tool-btn').forEach(b => {
             b.className = b === btn
               ? 'tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow'
@@ -1757,15 +1785,9 @@
       });
 
       function updateTouchAction() {
-        if (activeTool === 'pan') {
-          drawCanvas.style.touchAction = 'pan-x pan-y';
-          drawCanvas.style.pointerEvents = 'none';
-          drawCanvas.style.cursor = 'grab';
-        } else {
-          drawCanvas.style.touchAction = 'none';
-          drawCanvas.style.pointerEvents = 'auto';
-          drawCanvas.style.cursor = 'crosshair';
-        }
+        drawCanvas.style.touchAction = 'none';
+        drawCanvas.style.pointerEvents = 'auto';
+        drawCanvas.style.cursor = activeTool === 'pan' ? 'grab' : 'crosshair';
       }
       updateTouchAction();
 
@@ -1774,21 +1796,77 @@
 
       let isDrawing = false;
       let currentStroke = null;
+      let draggingImage = null;
+      let imageOffset = { x: 0, y: 0 };
+      let isPanningScroll = false;
+      let panStartClient = { x: 0, y: 0 };
+      let panStartScroll = { left: 0, top: 0 };
+
+      function findImageAtPos(pos) {
+        const key = `${doc.id}_p${currentPage}`;
+        const strokes = annotations[key] || [];
+        // 手前に描画されている（配列の後ろにある）写真を優先して判定
+        for (let i = strokes.length - 1; i >= 0; i--) {
+          const s = strokes[i];
+          if (
+            s.tool === 'image' &&
+            pos.x >= s.x &&
+            pos.x <= s.x + s.width &&
+            pos.y >= s.y &&
+            pos.y <= s.y + s.height
+          ) {
+            return s;
+          }
+        }
+        return null;
+      }
 
       drawCanvas.addEventListener('pointerdown', async (e) => {
-        if (activeTool === 'pan') return;
-        e.preventDefault();
-        drawCanvas.setPointerCapture(e.pointerId);
+        if (e.pointerType === 'touch' && !e.isPrimary) return;
+
         const rect = drawCanvas.getBoundingClientRect();
         const pos = {
-          x: Math.round((e.clientX - rect.left) / currentScale),
-          y: Math.round((e.clientY - rect.top) / currentScale)
+          x: (e.clientX - rect.left) / currentScale,
+          y: (e.clientY - rect.top) / currentScale
+        };
+
+        // パン／移動ツール（✋）：写真の上なら写真を移動、それ以外ならキャンバスをスクロール移動
+        if (activeTool === 'pan') {
+          const hitImg = findImageAtPos(pos);
+          if (hitImg) {
+            e.preventDefault();
+            drawCanvas.setPointerCapture(e.pointerId);
+            draggingImage = hitImg;
+            selectedImageId = hitImg.id;
+            imageOffset = {
+              x: pos.x - hitImg.x,
+              y: pos.y - hitImg.y
+            };
+            drawOverlay();
+            return;
+          }
+
+          selectedImageId = null;
+          drawOverlay();
+          isPanningScroll = true;
+          drawCanvas.setPointerCapture(e.pointerId);
+          panStartClient = { x: e.clientX, y: e.clientY };
+          panStartScroll = { left: canvasContainer.scrollLeft, top: canvasContainer.scrollTop };
+          return;
+        }
+
+        e.preventDefault();
+        drawCanvas.setPointerCapture(e.pointerId);
+
+        const intPos = {
+          x: Math.round(pos.x),
+          y: Math.round(pos.y)
         };
 
         if (activeTool === 'text') {
           const text = prompt('テキストを入力:');
           if (text && text.trim()) {
-            saveAndRedraw({ tool: 'text', color: currentColor, width: currentWidth, x: pos.x, y: pos.y, text: text.trim() });
+            await saveAndRedraw({ tool: 'text', color: currentColor, width: currentWidth, x: intPos.x, y: intPos.y, text: text.trim() });
           }
           return;
         }
@@ -1798,11 +1876,12 @@
           const strokes = annotations[key] || [];
           let targetId = null;
           strokes.forEach(s => {
-            if (s.points && s.points.some(pt => Math.hypot(pt.x - pos.x, pt.y - pos.y) < 25)) targetId = s.id;
-            else if (s.tool === 'circle' && Math.abs(Math.hypot(pos.x - s.cx, pos.y - s.cy) - s.r) < 25) targetId = s.id;
-            else if (s.tool === 'image' && pos.x >= s.x && pos.x <= s.x + s.width && pos.y >= s.y && pos.y <= s.y + s.height) targetId = s.id;
+            if (s.points && s.points.some(pt => Math.hypot(pt.x - intPos.x, pt.y - intPos.y) < 25)) targetId = s.id;
+            else if (s.tool === 'circle' && Math.abs(Math.hypot(intPos.x - s.cx, intPos.y - s.cy) - s.r) < 25) targetId = s.id;
+            else if (s.tool === 'image' && intPos.x >= s.x && intPos.x <= s.x + s.width && intPos.y >= s.y && intPos.y <= s.y + s.height) targetId = s.id;
           });
           if (targetId) {
+            if (targetId === selectedImageId) selectedImageId = null;
             annotations[key] = annotations[key].filter(s => s.id !== targetId);
             drawOverlay();
             if (isCloudMode) {
@@ -1821,16 +1900,38 @@
           tool: activeTool,
           color: currentColor,
           width: currentWidth,
-          points: [pos],
-          startX: pos.x,
-          startY: pos.y,
-          endX: pos.x,
-          endY: pos.y
+          points: [intPos],
+          startX: intPos.x,
+          startY: intPos.y,
+          endX: intPos.x,
+          endY: intPos.y
         };
       });
 
       drawCanvas.addEventListener('pointermove', (e) => {
+        if (draggingImage) {
+          e.preventDefault();
+          const rect = drawCanvas.getBoundingClientRect();
+          const posX = (e.clientX - rect.left) / currentScale;
+          const posY = (e.clientY - rect.top) / currentScale;
+          draggingImage.x = Math.round(posX - imageOffset.x);
+          draggingImage.y = Math.round(posY - imageOffset.y);
+          drawOverlay();
+          return;
+        }
+
+        if (isPanningScroll) {
+          e.preventDefault();
+          const dx = e.clientX - panStartClient.x;
+          const dy = e.clientY - panStartClient.y;
+          canvasContainer.scrollLeft = panStartScroll.left - dx;
+          canvasContainer.scrollTop = panStartScroll.top - dy;
+          return;
+        }
+
         if (activeTool === 'pan' || !isDrawing || !currentStroke) return;
+        e.preventDefault();
+
         const rect = drawCanvas.getBoundingClientRect();
         const pos = {
           x: Math.round((e.clientX - rect.left) / currentScale),
@@ -1839,7 +1940,7 @@
 
         if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
           const lastPt = currentStroke.points[currentStroke.points.length - 1];
-          if (!lastPt || Math.hypot(pos.x - lastPt.x, pos.y - lastPt.y) >= 2) {
+          if (!lastPt || Math.hypot(pos.x - lastPt.x, pos.y - lastPt.y) >= 1.5) {
             currentStroke.points.push(pos);
           }
         } else if (currentStroke.tool === 'rect') {
@@ -1852,6 +1953,7 @@
         ctx.save();
         ctx.strokeStyle = currentStroke.color;
         ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
           ctx.globalAlpha = currentStroke.tool === 'marker' ? 0.35 : 1.0;
           ctx.lineWidth = currentStroke.tool === 'marker' ? currentStroke.width * 4 : currentStroke.width;
@@ -1865,12 +1967,40 @@
         ctx.restore();
       });
 
-      drawCanvas.addEventListener('pointerup', async (e) => {
+      async function finishPointerInteraction() {
+        if (draggingImage) {
+          const movedImg = draggingImage;
+          draggingImage = null;
+          await persistStrokeUpdate(movedImg);
+          return;
+        }
+
+        if (isPanningScroll) {
+          isPanningScroll = false;
+          return;
+        }
+
         if (activeTool === 'pan' || !isDrawing || !currentStroke) return;
         isDrawing = false;
-        const finalStroke = trySnapToCircle(currentStroke);
-        await saveAndRedraw(finalStroke);
+        const strokeToSave = currentStroke;
         currentStroke = null;
+
+        const finalStroke = trySnapToCircle(strokeToSave);
+        await saveAndRedraw(finalStroke);
+      }
+
+      drawCanvas.addEventListener('pointerup', async (e) => {
+        if (drawCanvas.hasPointerCapture(e.pointerId)) {
+          drawCanvas.releasePointerCapture(e.pointerId);
+        }
+        await finishPointerInteraction();
+      });
+
+      drawCanvas.addEventListener('pointercancel', async (e) => {
+        if (drawCanvas.hasPointerCapture(e.pointerId)) {
+          drawCanvas.releasePointerCapture(e.pointerId);
+        }
+        await finishPointerInteraction();
       });
 
       renderPage();
