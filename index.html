@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 写真移動・連続ペン対応版</title>
+  <title>PDF & Image Sync Board - 連続手書きレスポンス改善版</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -158,7 +158,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <script>
-    const APP_PASSWORD = "1234";
+    const APP_PASSWORD = "0909";
 
     const FIREBASE_CONFIG = {
       apiKey: "AIzaSyDuVRjuskinN49x36sB0TmfxD7NNshTT8",
@@ -1592,7 +1592,8 @@
         });
       }
 
-      async function saveAndRedraw(stroke) {
+      // 連続書きのレスポンスを損なわないよう、ローカル反映・再描画を即座に行い、保存は非同期で走らせる
+      function saveAndRedraw(stroke) {
         const key = `${doc.id}_p${currentPage}`;
         if (!annotations[key]) annotations[key] = [];
         redoStack = [];
@@ -1605,20 +1606,22 @@
 
         if (isCloudMode) {
           const payload = { ...stroke, createdAt: Date.now() };
-          await db.collection('rooms').doc(ROOM_ID)
+          db.collection('rooms').doc(ROOM_ID)
             .collection('annotations').doc(key)
-            .collection('strokes').doc(strokeId).set(payload);
+            .collection('strokes').doc(strokeId).set(payload)
+            .catch(err => console.error('Stroke sync failed:', err));
         } else {
           saveAnnotationsData();
         }
       }
 
-      async function persistStrokeUpdate(stroke) {
+      function persistStrokeUpdate(stroke) {
         const key = `${doc.id}_p${currentPage}`;
         if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID)
+          db.collection('rooms').doc(ROOM_ID)
             .collection('annotations').doc(key)
-            .collection('strokes').doc(stroke.id).set({ ...stroke }, { merge: true });
+            .collection('strokes').doc(stroke.id).set({ ...stroke }, { merge: true })
+            .catch(err => console.error('Stroke update failed:', err));
         } else {
           saveAnnotationsData();
         }
@@ -1747,10 +1750,10 @@
         reader.onload = (event) => {
           const dataUrl = event.target.result;
           const img = new Image();
-          img.onload = async () => {
+          img.onload = () => {
             const maxW = 220;
             const aspect = img.height / (img.width || 1);
-            await saveAndRedraw({
+            saveAndRedraw({
               tool: 'image',
               dataUrl: dataUrl,
               x: 100,
@@ -1758,7 +1761,6 @@
               width: maxW,
               height: Math.round(maxW * aspect)
             });
-            // 追加後、すぐに移動しやすいようパンツールに切り替える
             const panBtn = document.querySelector('.tool-btn[data-tool="pan"]');
             if (panBtn) panBtn.click();
           };
@@ -1796,6 +1798,7 @@
 
       let isDrawing = false;
       let currentStroke = null;
+      let activePointerId = null;
       let draggingImage = null;
       let imageOffset = { x: 0, y: 0 };
       let isPanningScroll = false;
@@ -1805,7 +1808,6 @@
       function findImageAtPos(pos) {
         const key = `${doc.id}_p${currentPage}`;
         const strokes = annotations[key] || [];
-        // 手前に描画されている（配列の後ろにある）写真を優先して判定
         for (let i = strokes.length - 1; i >= 0; i--) {
           const s = strokes[i];
           if (
@@ -1821,8 +1823,19 @@
         return null;
       }
 
-      drawCanvas.addEventListener('pointerdown', async (e) => {
-        if (e.pointerType === 'touch' && !e.isPrimary) return;
+      drawCanvas.addEventListener('pointerdown', (e) => {
+        // 前のストロークが残っていた場合、即座に確定して次のストロークに備える
+        if (isDrawing && currentStroke) {
+          const prevStroke = currentStroke;
+          isDrawing = false;
+          currentStroke = null;
+          saveAndRedraw(trySnapToCircle(prevStroke));
+        }
+
+        if (activePointerId !== null && activePointerId !== e.pointerId) {
+          return;
+        }
+        activePointerId = e.pointerId;
 
         const rect = drawCanvas.getBoundingClientRect();
         const pos = {
@@ -1830,12 +1843,11 @@
           y: (e.clientY - rect.top) / currentScale
         };
 
-        // パン／移動ツール（✋）：写真の上なら写真を移動、それ以外ならキャンバスをスクロール移動
         if (activeTool === 'pan') {
           const hitImg = findImageAtPos(pos);
           if (hitImg) {
             e.preventDefault();
-            drawCanvas.setPointerCapture(e.pointerId);
+            try { drawCanvas.setPointerCapture(e.pointerId); } catch (_) {}
             draggingImage = hitImg;
             selectedImageId = hitImg.id;
             imageOffset = {
@@ -1849,14 +1861,14 @@
           selectedImageId = null;
           drawOverlay();
           isPanningScroll = true;
-          drawCanvas.setPointerCapture(e.pointerId);
+          try { drawCanvas.setPointerCapture(e.pointerId); } catch (_) {}
           panStartClient = { x: e.clientX, y: e.clientY };
           panStartScroll = { left: canvasContainer.scrollLeft, top: canvasContainer.scrollTop };
           return;
         }
 
         e.preventDefault();
-        drawCanvas.setPointerCapture(e.pointerId);
+        try { drawCanvas.setPointerCapture(e.pointerId); } catch (_) {}
 
         const intPos = {
           x: Math.round(pos.x),
@@ -1864,14 +1876,16 @@
         };
 
         if (activeTool === 'text') {
+          activePointerId = null;
           const text = prompt('テキストを入力:');
           if (text && text.trim()) {
-            await saveAndRedraw({ tool: 'text', color: currentColor, width: currentWidth, x: intPos.x, y: intPos.y, text: text.trim() });
+            saveAndRedraw({ tool: 'text', color: currentColor, width: currentWidth, x: intPos.x, y: intPos.y, text: text.trim() });
           }
           return;
         }
 
         if (activeTool === 'eraser') {
+          activePointerId = null;
           const key = `${doc.id}_p${currentPage}`;
           const strokes = annotations[key] || [];
           let targetId = null;
@@ -1885,9 +1899,10 @@
             annotations[key] = annotations[key].filter(s => s.id !== targetId);
             drawOverlay();
             if (isCloudMode) {
-              await db.collection('rooms').doc(ROOM_ID)
+              db.collection('rooms').doc(ROOM_ID)
                 .collection('annotations').doc(key)
-                .collection('strokes').doc(targetId).delete();
+                .collection('strokes').doc(targetId).delete()
+                .catch(err => console.error('Delete failed:', err));
             } else {
               saveAnnotationsData();
             }
@@ -1909,6 +1924,8 @@
       });
 
       drawCanvas.addEventListener('pointermove', (e) => {
+        if (activePointerId !== null && e.pointerId !== activePointerId) return;
+
         if (draggingImage) {
           e.preventDefault();
           const rect = drawCanvas.getBoundingClientRect();
@@ -1940,7 +1957,7 @@
 
         if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
           const lastPt = currentStroke.points[currentStroke.points.length - 1];
-          if (!lastPt || Math.hypot(pos.x - lastPt.x, pos.y - lastPt.y) >= 1.5) {
+          if (!lastPt || Math.hypot(pos.x - lastPt.x, pos.y - lastPt.y) >= 1) {
             currentStroke.points.push(pos);
           }
         } else if (currentStroke.tool === 'rect') {
@@ -1967,11 +1984,18 @@
         ctx.restore();
       });
 
-      async function finishPointerInteraction() {
+      function finishPointerInteraction(pointerId) {
+        if (pointerId !== undefined && drawCanvas.hasPointerCapture(pointerId)) {
+          try { drawCanvas.releasePointerCapture(pointerId); } catch (_) {}
+        }
+        if (activePointerId === pointerId || pointerId === undefined) {
+          activePointerId = null;
+        }
+
         if (draggingImage) {
           const movedImg = draggingImage;
           draggingImage = null;
-          await persistStrokeUpdate(movedImg);
+          persistStrokeUpdate(movedImg);
           return;
         }
 
@@ -1986,21 +2010,15 @@
         currentStroke = null;
 
         const finalStroke = trySnapToCircle(strokeToSave);
-        await saveAndRedraw(finalStroke);
+        saveAndRedraw(finalStroke);
       }
 
-      drawCanvas.addEventListener('pointerup', async (e) => {
-        if (drawCanvas.hasPointerCapture(e.pointerId)) {
-          drawCanvas.releasePointerCapture(e.pointerId);
-        }
-        await finishPointerInteraction();
+      drawCanvas.addEventListener('pointerup', (e) => {
+        finishPointerInteraction(e.pointerId);
       });
 
-      drawCanvas.addEventListener('pointercancel', async (e) => {
-        if (drawCanvas.hasPointerCapture(e.pointerId)) {
-          drawCanvas.releasePointerCapture(e.pointerId);
-        }
-        await finishPointerInteraction();
+      drawCanvas.addEventListener('pointercancel', (e) => {
+        finishPointerInteraction(e.pointerId);
       });
 
       renderPage();
