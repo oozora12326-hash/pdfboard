@@ -267,15 +267,11 @@
     let currentStrokeUnsubscribe = null;
     let resizeHandler = null;
 
-    // 階層ブラウズ状態
-    let currentFolderId = null; // null = ルート階層
-    let activeBottomTab = 'browse'; // 'browse' | 'recent'
+    let currentFolderId = null;
+    let activeBottomTab = 'browse';
     let searchQuery = '';
     let pendingMoveDocId = null;
 
-    // =========================================================================
-    // 容量チェック・超過メッセージ・自動圧縮ユーティリティ
-    // =========================================================================
     let lastQuotaAlertAt = 0;
 
     function showQuotaExceededAlert(message = '許容量を超えています。') {
@@ -494,7 +490,6 @@
       }
     }
 
-    // メニューモーダル制御
     const moreMenuModal = document.getElementById('moreMenuModal');
     document.getElementById('openMoreMenuBtn').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -533,7 +528,6 @@
       }
     });
 
-    // 検索入力
     const searchInput = document.getElementById('browseSearchInput');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
     searchInput.addEventListener('input', (e) => {
@@ -548,7 +542,6 @@
       renderBrowser();
     });
 
-    // 下部タブ切替
     document.querySelectorAll('.bottom-tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         activeBottomTab = btn.dataset.tab;
@@ -563,7 +556,6 @@
       });
     });
 
-    // 階層戻るボタン
     document.getElementById('browseBackBtn').addEventListener('click', () => {
       if (!currentFolderId) return;
       const cur = state.folders.find(f => f.id === currentFolderId);
@@ -681,7 +673,6 @@
       }
     }
 
-    // 移動先フォルダ選択モーダル操作
     const moveDocModal = document.getElementById('moveDocModal');
     const moveDestinationSelect = document.getElementById('moveDestinationSelect');
     const moveDocTargetName = document.getElementById('moveDocTargetName');
@@ -711,7 +702,25 @@
       const docId = pendingMoveDocId;
       pendingMoveDocId = null;
       moveDocModal.classList.add('hidden');
+
       await moveDocToFolder(docId, targetFolderId);
+
+      // 「ここに移動」を押したあと、移動先フォルダを表示して図面を確認できるようにする
+      activeBottomTab = 'browse';
+      searchQuery = '';
+      if (searchInput) searchInput.value = '';
+      if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
+      currentFolderId = targetFolderId || null;
+
+      document.querySelectorAll('.bottom-tab-btn').forEach(b => {
+        if (b.dataset.tab === 'browse') {
+          b.className = 'bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition';
+        } else {
+          b.className = 'bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition';
+        }
+      });
+
+      renderBrowser();
     });
 
     async function moveDocToFolder(docId, folderId) {
@@ -720,6 +729,13 @@
         .sort((a, b) => (a.order || 0) - (b.order || 0));
       const newOrder = docsInTarget.length;
 
+      // ローカル配列も先に更新して即時反映
+      const localDoc = state.documents.find(d => d.id === docId);
+      if (localDoc) {
+        localDoc.folderId = folderId;
+        localDoc.order = newOrder;
+      }
+
       try {
         if (isCloudMode) {
           await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(docId).update({
@@ -727,13 +743,7 @@
             order: newOrder
           });
         } else {
-          const doc = state.documents.find(d => d.id === docId);
-          if (doc) {
-            doc.folderId = folderId;
-            doc.order = newOrder;
-          }
           saveState();
-          renderBrowser();
         }
       } catch (err) {
         console.error(err);
@@ -946,7 +956,6 @@
           .sort((a, b) => (a.order || 0) - (b.order || 0));
 
         if (!currentFolderId) {
-          // ルート画面では未分類フォルダの直下ファイルまたは全件表示（デフォルトフォルダ内はフォルダから開く）
           docsToShow = state.documents
             .filter(d => !d.folderId)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -959,7 +968,6 @@
         }
       }
 
-      // フォルダ行を描画
       folderGroupList.innerHTML = '';
       if (foldersToShow.length === 0) {
         folderGroupList.innerHTML = `<div class="px-4 py-4 text-xs text-slate-400 text-center">表示するフォルダがありません</div>`;
@@ -1128,7 +1136,6 @@
 
       viewerContainer.innerHTML = `
         <div id="viewerApp" class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
-          <!-- 保存方法選択モーダル -->
           <div id="saveChoiceModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xs w-full p-5 shadow-2xl space-y-3.5">
               <div class="text-center space-y-1">
@@ -1153,7 +1160,6 @@
             </div>
           </div>
 
-          <!-- ヘッダー -->
           <header class="h-12 bg-slate-900 border-b border-slate-800 px-2 sm:px-3 flex items-center justify-between shrink-0 z-20 gap-1 overflow-x-auto">
             <div class="flex items-center gap-1.5 min-w-0 shrink-0">
               <button id="backToListBtn" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow shrink-0">
@@ -1179,7 +1185,6 @@
             </div>
           </header>
 
-          <!-- キャンバス領域 -->
           <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90">
             <div class="canvas-scroll-inner">
               <div class="canvas-scroll-cell">
@@ -1193,7 +1198,6 @@
             </div>
           </div>
 
-          <!-- ツールバー -->
           <div id="floatingToolbar" class="absolute z-30 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-1.5">
             <button id="undoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="元に戻る">↩️</button>
             <button id="redoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="やり直し">🔁</button>
