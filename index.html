@@ -198,7 +198,12 @@
         <section id="docSection" class="space-y-1.5">
           <div class="px-3 flex items-center justify-between">
             <h2 id="docSectionTitle" class="text-xs font-bold text-slate-500 tracking-wide">図面・ファイル</h2>
-            <span id="docCountLabel" class="text-[11px] text-slate-400">0件</span>
+            <div class="flex items-center gap-2">
+              <button id="sortByNumberBtn" type="button" class="hidden px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-600 text-[11px] font-bold transition">
+                🔢 番号順整列
+              </button>
+              <span id="docCountLabel" class="text-[11px] text-slate-400">0件</span>
+            </div>
           </div>
           <p id="reorderHintText" class="hidden px-3 text-[10px] text-slate-400">※ ファイルを長押しすると上下に並び替えできます</p>
           <div id="docGroupList" class="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs"></div>
@@ -287,6 +292,18 @@
     let suppressNextClick = false;
 
     let lastQuotaAlertAt = 0;
+
+    function extractLeadingNumber(name = '') {
+      const circleMatch = name.match(/[①-⑳]/);
+      if (circleMatch) {
+        return circleMatch[0].codePointAt(0) - 9311;
+      }
+      const numMatch = name.match(/^\s*0*(\d+)/);
+      if (numMatch) {
+        return parseInt(numMatch[1], 10);
+      }
+      return Number.MAX_SAFE_INTEGER;
+    }
 
     function navigateBackInBrowse() {
       if (!currentFolderId) return false;
@@ -631,6 +648,21 @@
       if (activeBottomTab === 'browse' && currentFolderId) {
         navigateBackInBrowse();
       }
+    });
+
+    document.getElementById('sortByNumberBtn').addEventListener('click', async () => {
+      if (!currentFolderId || activeBottomTab !== 'browse' || searchQuery) return;
+      const folderDocs = state.documents
+        .filter(d => (d.folderId || 'folder-default') === currentFolderId)
+        .sort((a, b) => {
+          const numA = extractLeadingNumber(a.name);
+          const numB = extractLeadingNumber(b.name);
+          if (numA !== numB) return numA - numB;
+          return a.name.localeCompare(b.name, 'ja');
+        });
+      if (folderDocs.length < 2) return;
+      await saveFolderDocsOrder(currentFolderId, folderDocs);
+      renderBrowser();
     });
 
     function initCloudListeners() {
@@ -1097,11 +1129,13 @@
       const docSectionTitle = document.getElementById('docSectionTitle');
       const docCountLabel = document.getElementById('docCountLabel');
       const reorderHintText = document.getElementById('reorderHintText');
+      const sortByNumberBtn = document.getElementById('sortByNumberBtn');
 
       renderBreadcrumb();
 
       if (activeBottomTab === 'recent') {
         reorderHintText.classList.add('hidden');
+        sortByNumberBtn.classList.add('hidden');
         headerTitle.textContent = '最近使った項目';
         backBtn.classList.add('hidden');
         folderSection.classList.add('hidden');
@@ -1135,6 +1169,7 @@
 
       if (searchQuery) {
         reorderHintText.classList.add('hidden');
+        sortByNumberBtn.classList.add('hidden');
         folderSection.classList.remove('hidden');
         foldersToShow = state.folders
           .filter(f => f.name.toLowerCase().includes(searchQuery))
@@ -1151,6 +1186,7 @@
 
         if (!currentFolderId) {
           reorderHintText.classList.add('hidden');
+          sortByNumberBtn.classList.add('hidden');
           docsToShow = state.documents
             .filter(d => !d.folderId)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -1163,6 +1199,7 @@
           canReorderInCurrentView = docsToShow.length > 1;
           reorderTargetFolderId = currentFolderId;
           reorderHintText.classList.toggle('hidden', !canReorderInCurrentView);
+          sortByNumberBtn.classList.toggle('hidden', !canReorderInCurrentView);
         }
       }
 
