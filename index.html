@@ -279,14 +279,67 @@
     let activeBottomTab = 'browse';
     let searchQuery = '';
 
-    // 移動モーダル状態（type: 'doc' | 'folder'）
     let pendingMoveTarget = null;
     let movingItemInFlight = null;
 
     let isLongPressReordering = false;
+    let isReorderingInFlight = false;
     let suppressNextClick = false;
 
     let lastQuotaAlertAt = 0;
+
+    function navigateBackInBrowse() {
+      if (!currentFolderId) return false;
+      const cur = state.folders.find(f => f.id === currentFolderId);
+      currentFolderId = cur ? (cur.parentId || null) : null;
+      renderBrowser();
+      return true;
+    }
+
+    function attachLeftEdgeSwipeBack(targetEl, onSwipeBack) {
+      if (!targetEl) return;
+      const EDGE_THRESHOLD = 28;
+      const SWIPE_DISTANCE = 70;
+      let tracking = false;
+      let startX = 0;
+      let startY = 0;
+      let triggered = false;
+
+      targetEl.addEventListener('pointerdown', (e) => {
+        if (isLongPressReordering) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (e.clientX <= EDGE_THRESHOLD) {
+          tracking = true;
+          triggered = false;
+          startX = e.clientX;
+          startY = e.clientY;
+        }
+      }, { passive: true });
+
+      targetEl.addEventListener('pointermove', (e) => {
+        if (!tracking || triggered) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dy) > 45 && dx < 35) {
+          tracking = false;
+          return;
+        }
+        if (dx >= SWIPE_DISTANCE && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          triggered = true;
+          tracking = false;
+          suppressNextClick = true;
+          setTimeout(() => { suppressNextClick = false; }, 180);
+          onSwipeBack();
+        }
+      }, { passive: true });
+
+      const resetTracking = () => {
+        tracking = false;
+        triggered = false;
+      };
+      targetEl.addEventListener('pointerup', resetTracking, { passive: true });
+      targetEl.addEventListener('pointercancel', resetTracking, { passive: true });
+    }
 
     function showQuotaExceededAlert(message = '許容量を超えています。') {
       const now = Date.now();
@@ -571,10 +624,13 @@
     });
 
     document.getElementById('browseBackBtn').addEventListener('click', () => {
-      if (!currentFolderId) return;
-      const cur = state.folders.find(f => f.id === currentFolderId);
-      currentFolderId = cur ? (cur.parentId || null) : null;
-      renderBrowser();
+      navigateBackInBrowse();
+    });
+
+    attachLeftEdgeSwipeBack(document.getElementById('appContainer'), () => {
+      if (activeBottomTab === 'browse' && currentFolderId) {
+        navigateBackInBrowse();
+      }
     });
 
     function initCloudListeners() {
@@ -619,7 +675,7 @@
         list.push(defaultFolder);
         list.sort((a, b) => (a.order || 0) - (b.order || 0));
         state.folders = list;
-        if (!isLongPressReordering) renderBrowser();
+        if (!isLongPressReordering && !isReorderingInFlight) renderBrowser();
       });
 
       roomRef.collection('documents').onSnapshot(snap => {
@@ -631,6 +687,9 @@
           const resolvedFolderId = (movingItemInFlight && movingItemInFlight.type === 'doc' && movingItemInFlight.id === docSnap.id && existingLocal)
             ? existingLocal.folderId
             : (data.folderId || 'folder-default');
+          const resolvedOrder = (isReorderingInFlight && existingLocal)
+            ? existingLocal.order
+            : (data.order !== undefined ? data.order : 999);
 
           docsList.push({
             id: docSnap.id,
@@ -638,13 +697,13 @@
             folderId: resolvedFolderId,
             type: data.type || 'pdf',
             dataUrl: mergedDataUrl,
-            order: data.order !== undefined ? data.order : 999,
+            order: resolvedOrder,
             numPages: existingLocal ? (existingLocal.numPages || 1) : 1
           });
         });
         docsList.sort((a, b) => (a.order || 0) - (b.order || 0));
         state.documents = docsList;
-        if (!isLongPressReordering) renderBrowser();
+        if (!isLongPressReordering && !isReorderingInFlight) renderBrowser();
       });
 
       roomRef.collection('presence').onSnapshot(snap => {
@@ -698,7 +757,6 @@
       }
     }
 
-    // 移動先選択モーダル（ファイル・フォルダ両対応）
     const moveDocModal = document.getElementById('moveDocModal');
     const moveModalTitle = document.getElementById('moveModalTitle');
     const moveDestinationSelect = document.getElementById('moveDestinationSelect');
@@ -844,17 +902,28 @@
 
     async function saveFolderDocsOrder(folderId, orderedDocs) {
       const normalizedFolderId = folderId || 'folder-default';
+      const orderMap = new Map();
       orderedDocs.forEach((d, idx) => {
         d.order = idx;
         d.folderId = normalizedFolderId;
+        orderMap.set(d.id, idx);
       });
 
+      state.documents.forEach(item => {
+        if (orderMap.has(item.id)) {
+          item.order = orderMap.get(item.id);
+          item.folderId = normalizedFolderId;
+        }
+      });
+      state.documents.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      isReorderingInFlight = true;
       try {
         if (isCloudMode) {
           const batch = db.batch();
-          orderedDocs.forEach(d => {
+          orderedDocs.forEach((d, idx) => {
             const ref = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
-            batch.set(ref, { order: d.order, folderId: normalizedFolderId }, { merge: true });
+            batch.set(ref, { order: idx, folderId: normalizedFolderId }, { merge: true });
           });
           await batch.commit();
         } else {
@@ -863,6 +932,8 @@
       } catch (err) {
         console.error(err);
         notifyIfQuotaExceeded(err);
+      } finally {
+        isReorderingInFlight = false;
       }
     }
 
@@ -1124,6 +1195,7 @@
           `;
 
           row.addEventListener('click', (e) => {
+            if (suppressNextClick) return;
             if (e.target.closest('.move-folder-btn') || e.target.closest('.delete-folder-btn')) return;
             currentFolderId = folder.id;
             renderBrowser();
@@ -1184,6 +1256,7 @@
     function attachLongPressReorder(rowEl, doc, container, docsList, folderId) {
       let longPressTimer = null;
       let activeDrag = false;
+      let startX = 0;
       let startY = 0;
       let currentOrderedDocs = [...docsList];
 
@@ -1213,7 +1286,7 @@
 
       function onPointerMove(e) {
         if (!activeDrag) {
-          if (Math.abs(e.clientY - startY) > 8) {
+          if (Math.hypot(e.clientX - startX, e.clientY - startY) > 14) {
             clearLongPressTimer();
           }
           return;
@@ -1250,7 +1323,7 @@
         activeDrag = false;
         isLongPressReordering = false;
         suppressNextClick = true;
-        setTimeout(() => { suppressNextClick = false; }, 120);
+        setTimeout(() => { suppressNextClick = false; }, 160);
 
         const activeRow = container.querySelector(`.doc-row-item[data-doc-id="${doc.id}"]`);
         if (activeRow) {
@@ -1266,6 +1339,7 @@
         if (e.button !== undefined && e.button !== 0) return;
         if (e.target.closest('.move-doc-btn') || e.target.closest('.delete-doc-btn')) return;
 
+        startX = e.clientX;
         startY = e.clientY;
         currentOrderedDocs = [...docsList];
 
@@ -1509,6 +1583,7 @@
       updateToolbarPosition();
 
       document.getElementById('backToListBtn').addEventListener('click', closeViewer);
+      attachLeftEdgeSwipeBack(document.getElementById('viewerApp'), closeViewer);
 
       initViewerLogic(doc);
     }
