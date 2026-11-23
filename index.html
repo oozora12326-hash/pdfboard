@@ -233,7 +233,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <script>
-    const APP_PASSWORD = "1234";
+    const APP_PASSWORD = "0909";
 
     const FIREBASE_CONFIG = {
       apiKey: "AIzaSyDuVRjuskinN49x36sB0TmfxD7NNshTT8",
@@ -279,8 +279,8 @@
     let activeBottomTab = 'browse';
     let searchQuery = '';
     let pendingMoveDocId = null;
+    let movingDocIdInFlight = null;
 
-    // 長押し並び替え管理用
     let isLongPressReordering = false;
     let suppressNextClick = false;
 
@@ -619,14 +619,20 @@
         const docsList = [];
         snap.forEach(docSnap => {
           const data = docSnap.data();
+          const existingLocal = state.documents.find(item => item.id === docSnap.id);
+          const mergedDataUrl = data.dataUrl || (existingLocal ? existingLocal.dataUrl : null);
+          const resolvedFolderId = (movingDocIdInFlight === docSnap.id && existingLocal)
+            ? existingLocal.folderId
+            : (data.folderId || 'folder-default');
+
           docsList.push({
             id: docSnap.id,
             name: data.name,
-            folderId: data.folderId || 'folder-default',
+            folderId: resolvedFolderId,
             type: data.type || 'pdf',
-            dataUrl: data.dataUrl || null,
+            dataUrl: mergedDataUrl,
             order: data.order !== undefined ? data.order : 999,
-            numPages: 1
+            numPages: existingLocal ? (existingLocal.numPages || 1) : 1
           });
         });
         docsList.sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -710,18 +716,23 @@
 
     document.getElementById('confirmMoveDocBtn').addEventListener('click', async () => {
       if (!pendingMoveDocId) return;
-      const targetFolderId = moveDestinationSelect.value;
+      const targetFolderId = moveDestinationSelect.value || 'folder-default';
       const docId = pendingMoveDocId;
       pendingMoveDocId = null;
       moveDocModal.classList.add('hidden');
 
-      await moveDocToFolder(docId, targetFolderId);
+      movingDocIdInFlight = docId;
+      try {
+        await moveDocToFolder(docId, targetFolderId);
+      } finally {
+        movingDocIdInFlight = null;
+      }
 
       activeBottomTab = 'browse';
       searchQuery = '';
       if (searchInput) searchInput.value = '';
       if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
-      currentFolderId = targetFolderId || null;
+      currentFolderId = targetFolderId;
 
       document.querySelectorAll('.bottom-tab-btn').forEach(b => {
         if (b.dataset.tab === 'browse') {
@@ -735,23 +746,24 @@
     });
 
     async function moveDocToFolder(docId, folderId) {
+      const normalizedFolderId = folderId || 'folder-default';
       const docsInTarget = state.documents
-        .filter(d => d.folderId === folderId && d.id !== docId)
+        .filter(d => (d.folderId || 'folder-default') === normalizedFolderId && d.id !== docId)
         .sort((a, b) => (a.order || 0) - (b.order || 0));
       const newOrder = docsInTarget.length;
 
       const localDoc = state.documents.find(d => d.id === docId);
       if (localDoc) {
-        localDoc.folderId = folderId;
+        localDoc.folderId = normalizedFolderId;
         localDoc.order = newOrder;
       }
 
       try {
         if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(docId).update({
-            folderId,
+          await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(docId).set({
+            folderId: normalizedFolderId,
             order: newOrder
-          });
+          }, { merge: true });
         } else {
           saveState();
         }
@@ -761,10 +773,11 @@
       }
     }
 
-    // 同じフォルダ内のファイル順序を保存
     async function saveFolderDocsOrder(folderId, orderedDocs) {
+      const normalizedFolderId = folderId || 'folder-default';
       orderedDocs.forEach((d, idx) => {
         d.order = idx;
+        d.folderId = normalizedFolderId;
       });
 
       try {
@@ -772,7 +785,7 @@
           const batch = db.batch();
           orderedDocs.forEach(d => {
             const ref = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
-            batch.update(ref, { order: d.order, folderId: folderId });
+            batch.set(ref, { order: d.order, folderId: normalizedFolderId }, { merge: true });
           });
           await batch.commit();
         } else {
@@ -1001,7 +1014,7 @@
           docSectionTitle.textContent = 'その他のファイル';
         } else {
           docsToShow = state.documents
-            .filter(d => d.folderId === currentFolderId)
+            .filter(d => (d.folderId || 'folder-default') === currentFolderId)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
           docSectionTitle.textContent = '図面・ファイル';
           canReorderInCurrentView = docsToShow.length > 1;
@@ -1143,7 +1156,7 @@
         });
       }
 
-      async function onPointerUp(e) {
+      async function onPointerUp() {
         clearLongPressTimer();
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
@@ -1217,15 +1230,24 @@
             </div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button class="move-doc-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 text-[11px] font-semibold transition">
+            <button type="button" class="move-doc-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 text-[11px] font-semibold transition">
               移動
             </button>
-            <button class="delete-doc-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50 transition" title="削除">
+            <button type="button" class="delete-doc-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50 transition" title="削除">
               削除
             </button>
             <span class="text-slate-300 font-bold text-base pl-0.5">›</span>
           </div>
         `;
+
+        const moveBtn = row.querySelector('.move-doc-btn');
+        const delBtn = row.querySelector('.delete-doc-btn');
+
+        // ボタン押下時は行の長押し・タップ判定へ伝播させない
+        [moveBtn, delBtn].forEach(btn => {
+          btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+          btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        });
 
         row.addEventListener('click', (e) => {
           if (suppressNextClick || isLongPressReordering) return;
@@ -1233,12 +1255,12 @@
           openViewer(doc.id);
         });
 
-        row.querySelector('.move-doc-btn').addEventListener('click', (e) => {
+        moveBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           openMoveDocModal(doc.id);
         });
 
-        row.querySelector('.delete-doc-btn').addEventListener('click', async (e) => {
+        delBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
           if (!confirm(`「${doc.name}」を削除しますか？`)) return;
           if (isCloudMode) {
