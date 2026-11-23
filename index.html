@@ -49,6 +49,13 @@
     #passwordModal, #saveChoiceModal, #moveDocModal, #moreMenuModal, input, button, select {
       touch-action: manipulation;
     }
+    .doc-row-reordering {
+      position: relative;
+      z-index: 25;
+      background-color: #eff6ff !important;
+      box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.25), 0 4px 10px -2px rgba(37, 99, 235, 0.12);
+      transform: scale(1.015);
+    }
     ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
@@ -193,6 +200,7 @@
             <h2 id="docSectionTitle" class="text-xs font-bold text-slate-500 tracking-wide">図面・ファイル</h2>
             <span id="docCountLabel" class="text-[11px] text-slate-400">0件</span>
           </div>
+          <p id="reorderHintText" class="hidden px-3 text-[10px] text-slate-400">※ ファイルを長押しすると上下に並び替えできます</p>
           <div id="docGroupList" class="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs"></div>
         </section>
       </div>
@@ -271,6 +279,10 @@
     let activeBottomTab = 'browse';
     let searchQuery = '';
     let pendingMoveDocId = null;
+
+    // 長押し並び替え管理用
+    let isLongPressReordering = false;
+    let suppressNextClick = false;
 
     let lastQuotaAlertAt = 0;
 
@@ -600,7 +612,7 @@
         list.push(defaultFolder);
         list.sort((a, b) => (a.order || 0) - (b.order || 0));
         state.folders = list;
-        renderBrowser();
+        if (!isLongPressReordering) renderBrowser();
       });
 
       roomRef.collection('documents').onSnapshot(snap => {
@@ -619,7 +631,7 @@
         });
         docsList.sort((a, b) => (a.order || 0) - (b.order || 0));
         state.documents = docsList;
-        renderBrowser();
+        if (!isLongPressReordering) renderBrowser();
       });
 
       roomRef.collection('presence').onSnapshot(snap => {
@@ -705,7 +717,6 @@
 
       await moveDocToFolder(docId, targetFolderId);
 
-      // 「ここに移動」を押したあと、移動先フォルダを表示して図面を確認できるようにする
       activeBottomTab = 'browse';
       searchQuery = '';
       if (searchInput) searchInput.value = '';
@@ -729,7 +740,6 @@
         .sort((a, b) => (a.order || 0) - (b.order || 0));
       const newOrder = docsInTarget.length;
 
-      // ローカル配列も先に更新して即時反映
       const localDoc = state.documents.find(d => d.id === docId);
       if (localDoc) {
         localDoc.folderId = folderId;
@@ -742,6 +752,29 @@
             folderId,
             order: newOrder
           });
+        } else {
+          saveState();
+        }
+      } catch (err) {
+        console.error(err);
+        notifyIfQuotaExceeded(err);
+      }
+    }
+
+    // 同じフォルダ内のファイル順序を保存
+    async function saveFolderDocsOrder(folderId, orderedDocs) {
+      orderedDocs.forEach((d, idx) => {
+        d.order = idx;
+      });
+
+      try {
+        if (isCloudMode) {
+          const batch = db.batch();
+          orderedDocs.forEach(d => {
+            const ref = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
+            batch.update(ref, { order: d.order, folderId: folderId });
+          });
+          await batch.commit();
         } else {
           saveState();
         }
@@ -907,10 +940,12 @@
       const docGroupList = document.getElementById('docGroupList');
       const docSectionTitle = document.getElementById('docSectionTitle');
       const docCountLabel = document.getElementById('docCountLabel');
+      const reorderHintText = document.getElementById('reorderHintText');
 
       renderBreadcrumb();
 
       if (activeBottomTab === 'recent') {
+        reorderHintText.classList.add('hidden');
         headerTitle.textContent = '最近使った項目';
         backBtn.classList.add('hidden');
         folderSection.classList.add('hidden');
@@ -925,7 +960,7 @@
         }
 
         docCountLabel.textContent = `${recentDocs.length}件`;
-        renderDocRows(docGroupList, recentDocs);
+        renderDocRows(docGroupList, recentDocs, { allowLongPressReorder: false, folderId: null });
         return;
       }
 
@@ -939,8 +974,11 @@
 
       let foldersToShow = [];
       let docsToShow = [];
+      let canReorderInCurrentView = false;
+      let reorderTargetFolderId = null;
 
       if (searchQuery) {
+        reorderHintText.classList.add('hidden');
         folderSection.classList.remove('hidden');
         foldersToShow = state.folders
           .filter(f => f.name.toLowerCase().includes(searchQuery))
@@ -956,6 +994,7 @@
           .sort((a, b) => (a.order || 0) - (b.order || 0));
 
         if (!currentFolderId) {
+          reorderHintText.classList.add('hidden');
           docsToShow = state.documents
             .filter(d => !d.folderId)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -965,6 +1004,9 @@
             .filter(d => d.folderId === currentFolderId)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
           docSectionTitle.textContent = '図面・ファイル';
+          canReorderInCurrentView = docsToShow.length > 1;
+          reorderTargetFolderId = currentFolderId;
+          reorderHintText.classList.toggle('hidden', !canReorderInCurrentView);
         }
       }
 
@@ -1036,10 +1078,118 @@
       }
 
       docCountLabel.textContent = `${docsToShow.length}件`;
-      renderDocRows(docGroupList, docsToShow);
+      renderDocRows(docGroupList, docsToShow, {
+        allowLongPressReorder: canReorderInCurrentView,
+        folderId: reorderTargetFolderId
+      });
     }
 
-    function renderDocRows(container, docsList) {
+    function attachLongPressReorder(rowEl, doc, container, docsList, folderId) {
+      let longPressTimer = null;
+      let activeDrag = false;
+      let startY = 0;
+      let currentOrderedDocs = [...docsList];
+
+      function clearLongPressTimer() {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      }
+
+      function findTargetDocIdAtY(clientY) {
+        const rows = Array.from(container.querySelectorAll('.doc-row-item'));
+        for (const r of rows) {
+          const rect = r.getBoundingClientRect();
+          if (clientY >= rect.top && clientY <= rect.bottom) {
+            return r.dataset.docId;
+          }
+        }
+        if (rows.length > 0) {
+          const firstRect = rows[0].getBoundingClientRect();
+          if (clientY < firstRect.top) return rows[0].dataset.docId;
+          const lastRect = rows[rows.length - 1].getBoundingClientRect();
+          if (clientY > lastRect.bottom) return rows[rows.length - 1].dataset.docId;
+        }
+        return null;
+      }
+
+      function onPointerMove(e) {
+        if (!activeDrag) {
+          if (Math.abs(e.clientY - startY) > 8) {
+            clearLongPressTimer();
+          }
+          return;
+        }
+
+        e.preventDefault();
+        const targetId = findTargetDocIdAtY(e.clientY);
+        if (!targetId || targetId === doc.id) return;
+
+        const fromIdx = currentOrderedDocs.findIndex(d => d.id === doc.id);
+        const toIdx = currentOrderedDocs.findIndex(d => d.id === targetId);
+        if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+
+        const [moved] = currentOrderedDocs.splice(fromIdx, 1);
+        currentOrderedDocs.splice(toIdx, 0, moved);
+
+        const rowMap = new Map();
+        Array.from(container.querySelectorAll('.doc-row-item')).forEach(r => {
+          rowMap.set(r.dataset.docId, r);
+        });
+        currentOrderedDocs.forEach(itemDoc => {
+          const matchedRow = rowMap.get(itemDoc.id);
+          if (matchedRow) container.appendChild(matchedRow);
+        });
+      }
+
+      async function onPointerUp(e) {
+        clearLongPressTimer();
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+
+        if (!activeDrag) return;
+        activeDrag = false;
+        isLongPressReordering = false;
+        suppressNextClick = true;
+        setTimeout(() => { suppressNextClick = false; }, 120);
+
+        const activeRow = container.querySelector(`.doc-row-item[data-doc-id="${doc.id}"]`);
+        if (activeRow) {
+          activeRow.classList.remove('doc-row-reordering');
+          activeRow.style.touchAction = '';
+        }
+
+        await saveFolderDocsOrder(folderId, currentOrderedDocs);
+        renderBrowser();
+      }
+
+      rowEl.addEventListener('pointerdown', (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        if (e.target.closest('.move-doc-btn') || e.target.closest('.delete-doc-btn')) return;
+
+        startY = e.clientY;
+        currentOrderedDocs = [...docsList];
+
+        longPressTimer = setTimeout(() => {
+          activeDrag = true;
+          isLongPressReordering = true;
+          rowEl.classList.add('doc-row-reordering');
+          rowEl.style.touchAction = 'none';
+          if (navigator.vibrate) {
+            try { navigator.vibrate(20); } catch (_) {}
+          }
+        }, 350);
+
+        window.addEventListener('pointermove', onPointerMove, { passive: false });
+        window.addEventListener('pointerup', onPointerUp);
+        window.addEventListener('pointercancel', onPointerUp);
+      });
+    }
+
+    function renderDocRows(container, docsList, options = {}) {
+      const { allowLongPressReorder = false, folderId = null } = options;
       container.innerHTML = '';
       if (docsList.length === 0) {
         container.innerHTML = `<div class="px-4 py-5 text-xs text-slate-400 text-center">ファイルがありません</div>`;
@@ -1055,7 +1205,8 @@
         if (doc.type === 'cad') icon = '📐';
 
         const row = document.createElement('div');
-        row.className = 'px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer';
+        row.dataset.docId = doc.id;
+        row.className = 'doc-row-item px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer';
 
         row.innerHTML = `
           <div class="flex items-center gap-3 min-w-0 flex-1">
@@ -1077,6 +1228,7 @@
         `;
 
         row.addEventListener('click', (e) => {
+          if (suppressNextClick || isLongPressReordering) return;
           if (e.target.closest('.move-doc-btn') || e.target.closest('.delete-doc-btn')) return;
           openViewer(doc.id);
         });
@@ -1097,6 +1249,10 @@
             renderBrowser();
           }
         });
+
+        if (allowLongPressReorder && folderId) {
+          attachLongPressReorder(row, doc, container, docsList, folderId);
+        }
 
         container.appendChild(row);
       });
