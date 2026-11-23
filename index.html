@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 連続書き改善・一括保存完全版</title>
+  <title>PDF & Image Sync Board - 明るめ階層ブラウズ版</title>
   <link rel="manifest" href="./manifest.json">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#f2f2f7">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="PDF Board">
   <link rel="apple-touch-icon" href="./icon-512.png">
 
@@ -46,7 +46,7 @@
       text-align: left;
       vertical-align: middle;
     }
-    #passwordModal, #saveChoiceModal, input, button, select {
+    #passwordModal, #saveChoiceModal, #moveDocModal, #moreMenuModal, input, button, select {
       touch-action: manipulation;
     }
     ::-webkit-scrollbar {
@@ -54,27 +54,27 @@
       height: 6px;
     }
     ::-webkit-scrollbar-track {
-      background: #0f172a;
+      background: transparent;
     }
     ::-webkit-scrollbar-thumb {
-      background: #334155;
+      background: rgba(100, 116, 139, 0.35);
       border-radius: 3px;
     }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans">
+<body class="bg-[#f2f2f7] text-slate-900 h-screen w-screen overflow-hidden flex flex-col font-sans">
 
-  <!-- Password Protection Modal -->
-  <div id="passwordModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+  <!-- パスワード認証モーダル -->
+  <div id="passwordModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-md flex items-center justify-center z-50 p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
       <div class="text-center space-y-1">
         <span class="text-3xl">🔒</span>
-        <h2 class="font-bold text-lg text-white">パスワード認証</h2>
-        <p class="text-xs text-slate-400">このワークスペースに入るためのパスワードを入力してください</p>
+        <h2 class="font-bold text-lg text-slate-900">パスワード認証</h2>
+        <p class="text-xs text-slate-500">このワークスペースに入るためのパスワードを入力してください</p>
       </div>
       <form id="passwordForm" class="space-y-3">
-        <input type="password" id="roomPasswordInput" inputmode="numeric" pattern="[0-9]*" placeholder="パスワードを入力 (数字)" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 text-center tracking-widest text-lg" />
-        <p id="passwordError" class="text-xs text-red-400 hidden text-center">パスワードが間違っています</p>
+        <input type="password" id="roomPasswordInput" inputmode="numeric" pattern="[0-9]*" placeholder="パスワードを入力 (数字)" required class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-blue-500 text-center tracking-widest text-lg" />
+        <p id="passwordError" class="text-xs text-red-500 hidden text-center">パスワードが間違っています</p>
         <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
           入室する
         </button>
@@ -82,75 +82,142 @@
     </div>
   </div>
 
-  <!-- App Main Container (一覧・フォルダ画面) -->
-  <div id="appContainer" class="flex-1 flex flex-col overflow-hidden relative">
-    <!-- Top Header -->
-    <header class="h-14 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between shrink-0 z-20">
-      <div class="flex items-center gap-2.5">
-        <button id="toggleSidebarBtn" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200" title="サイドバー切替">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-        </button>
-        <div class="flex items-center gap-2">
-          <span class="bg-blue-600 text-white font-bold px-2 py-0.5 rounded text-sm">PDF/IMG</span>
-          <h1 class="font-bold text-base tracking-tight hidden sm:block">Sync Board</h1>
-        </div>
-        <span id="syncStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-          <span>ローカル保存</span>
-        </span>
+  <!-- 移動先フォルダ選択モーダル -->
+  <div id="moveDocModal" class="hidden fixed inset-0 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+      <div class="space-y-1">
+        <h3 class="font-bold text-base text-slate-900">移動先フォルダを選択</h3>
+        <p id="moveDocTargetName" class="text-xs text-slate-500 truncate"></p>
       </div>
-
-      <div class="flex items-center gap-2">
-        <div id="activeUsersIndicator" class="hidden sm:flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 text-[11px] text-slate-300">
-          <span>👥 接続中:</span><span id="activeUsersCount" class="font-bold text-emerald-400">1人</span>
-        </div>
-        <button id="shareRoomBtn" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow">
-          <span>🔗</span><span class="hidden sm:inline">URL共有</span>
+      <div class="space-y-1.5">
+        <label for="moveDestinationSelect" class="block text-[11px] font-semibold text-slate-600">移動先のフォルダ</label>
+        <select id="moveDestinationSelect" class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-blue-500"></select>
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button id="cancelMoveDocBtn" class="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition">
+          キャンセル
+        </button>
+        <button id="confirmMoveDocBtn" class="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
+          ここに移動
         </button>
       </div>
-    </header>
-
-    <!-- Main Body -->
-    <div class="flex-1 flex overflow-hidden relative">
-      <!-- Left Sidebar (Folders & Files) -->
-      <aside id="sidebar" class="w-80 sm:w-96 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-200 z-10">
-        <div class="p-3 border-b border-slate-800 flex flex-col gap-2">
-          <button id="addImageDocBtn" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow transition">
-            <span>📷 画像 / PDF / 図面追加</span>
-          </button>
-          <input type="file" id="localImageInput" class="hidden" multiple accept="image/*,application/pdf,.zwd,.zfd" />
-          <div class="flex gap-1.5">
-            <button id="createFolderBtn" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1">
-              <span>📁</span><span>新規フォルダ</span>
-            </button>
-            <button id="clearStorageBtn" class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-red-400 text-xs rounded-lg border border-slate-700" title="保存データをリセット">
-              🔄
-            </button>
-          </div>
-          <p class="text-[10px] text-slate-400 text-center">※ファイルやフォルダはドラッグまたは↑↓ボタンで順序変更できます</p>
-        </div>
-
-        <!-- Folder & Document Tree -->
-        <div id="folderListContainer" class="flex-1 overflow-y-auto p-2 space-y-2">
-          <!-- Rendered by JS -->
-        </div>
-
-        <div class="p-2.5 border-t border-slate-800 text-[11px] text-slate-400 flex justify-between items-center bg-slate-900/80">
-          <span id="roomLabel">Room: default</span>
-          <span id="docCountLabel">0 ファイル</span>
-        </div>
-      </aside>
-
-      <!-- Workspace Home / Guide -->
-      <main id="mainWorkspaceArea" class="flex-1 bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-400 space-y-3">
-        <div class="text-5xl">📂</div>
-        <h2 class="text-lg font-bold text-white">図面を選択してください</h2>
-        <p class="text-xs max-w-sm leading-relaxed">左側のファイル一覧から確認したいPDFや画像・CAD図面をタップすると、専用のフルスクリーン編集画面に切り替わります。</p>
-      </main>
     </div>
   </div>
 
-  <!-- Viewer Container (図面操作画面) -->
+  <!-- メニュー（...）モーダル -->
+  <div id="moreMenuModal" class="hidden fixed inset-0 bg-slate-900/35 backdrop-blur-[2px] flex items-start justify-end z-50 pt-16 pr-4">
+    <div class="bg-white border border-slate-200 rounded-2xl w-60 p-2 shadow-2xl space-y-1">
+      <button id="menuAddDocBtn" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
+        <span>📷</span><span>画像 / PDF / 図面を追加</span>
+      </button>
+      <button id="menuCreateFolderBtn" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
+        <span>📁</span><span>ここに新規フォルダを作成</span>
+      </button>
+      <button id="menuShareRoomBtn" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
+        <span>🔗</span><span>共有用URLをコピー</span>
+      </button>
+      <div class="border-t border-slate-100 my-1"></div>
+      <button id="menuResetLocalBtn" class="w-full px-3 py-2 rounded-xl text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2.5">
+        <span>🔄</span><span>ローカル保存データを初期化</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 明るめ階層ブラウズ画面 -->
+  <div id="appContainer" class="flex-1 flex flex-col overflow-hidden relative bg-[#f2f2f7]">
+    <input type="file" id="localImageInput" class="hidden" multiple accept="image/*,application/pdf,.zwd,.zfd" />
+
+    <!-- 上部ヘッダー＆検索バー -->
+    <header class="bg-[#f2f2f7]/95 backdrop-blur-md border-b border-slate-200/80 px-4 pt-3 pb-2.5 shrink-0 z-20 space-y-2.5">
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <button id="browseBackBtn" class="hidden w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-blue-600 flex items-center justify-center shadow-sm shrink-0" title="上の階層へ戻る">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <div class="min-w-0">
+            <h1 id="browseHeaderTitle" class="text-xl font-bold tracking-tight text-slate-900 truncate">ブラウズ</h1>
+            <p class="text-[11px] text-slate-500 flex items-center gap-1.5 truncate">
+              <span id="syncStatusDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+              <span id="syncStatusText">ローカル保存</span>
+              <span>•</span>
+              <span id="roomLabel">Room: default-room</span>
+              <span>•</span>
+              <span id="activeUsersCount" class="font-semibold text-slate-700">1人接続</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="quickAddFileBtn" class="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition flex items-center gap-1">
+            <span>＋</span><span>追加</span>
+          </button>
+          <button id="openMoreMenuBtn" class="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-slate-700 flex items-center justify-center shadow-sm transition" title="メニュー">
+            <span class="font-bold tracking-widest text-xs">•••</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 検索バー -->
+      <div class="max-w-3xl mx-auto">
+        <div class="relative flex items-center">
+          <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">🔍</span>
+          <input
+            type="search"
+            id="browseSearchInput"
+            placeholder="図面・フォルダを検索"
+            class="w-full bg-[#e3e3e8]/85 focus:bg-white text-slate-900 placeholder-slate-500 text-sm rounded-xl pl-9 pr-8 py-2 border border-transparent focus:border-blue-400 focus:outline-none transition"
+          />
+          <button id="clearSearchBtn" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs px-1" title="検索をクリア">✕</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- メインコンテンツ（グループ化リスト） -->
+    <main id="browseScrollArea" class="flex-1 overflow-y-auto px-4 pt-3 pb-28">
+      <div class="max-w-3xl mx-auto space-y-5">
+        <!-- パンくず表示（階層移動中） -->
+        <div id="breadcrumbBar" class="hidden flex items-center gap-1 text-xs text-slate-500 overflow-x-auto pb-0.5"></div>
+
+        <!-- フォルダグループ -->
+        <section id="folderSection" class="space-y-1.5">
+          <div class="px-3 flex items-center justify-between">
+            <h2 class="text-xs font-bold text-slate-500 tracking-wide">フォルダ</h2>
+            <button id="inlineCreateFolderBtn" class="text-xs font-semibold text-blue-600 hover:text-blue-500">＋ 新規フォルダ</button>
+          </div>
+          <div id="folderGroupList" class="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs"></div>
+        </section>
+
+        <!-- 図面・ファイルグループ -->
+        <section id="docSection" class="space-y-1.5">
+          <div class="px-3 flex items-center justify-between">
+            <h2 id="docSectionTitle" class="text-xs font-bold text-slate-500 tracking-wide">図面・ファイル</h2>
+            <span id="docCountLabel" class="text-[11px] text-slate-400">0件</span>
+          </div>
+          <div id="docGroupList" class="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- 下部フローティングタブバー -->
+    <nav class="fixed bottom-4 inset-x-0 flex justify-center px-4 z-30 pointer-events-none">
+      <div class="pointer-events-auto bg-white/90 backdrop-blur-xl border border-slate-200/90 shadow-lg rounded-full px-2 py-1.5 flex items-center gap-1">
+        <button data-tab="recent" class="bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
+          <span class="text-base leading-none">🕒</span>
+          <span>最近使った項目</span>
+        </button>
+        <button data-tab="browse" class="bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition">
+          <span class="text-base leading-none">📁</span>
+          <span>ブラウズ</span>
+        </button>
+        <button id="bottomShareBtn" class="px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
+          <span class="text-base leading-none">👥</span>
+          <span>共有</span>
+        </button>
+      </div>
+    </nav>
+  </div>
+
+  <!-- ビューア画面 -->
   <div id="viewerContainer" class="hidden fixed inset-0 z-40 bg-slate-950 text-slate-100 flex flex-col overflow-hidden"></div>
 
   <!-- Firebase SDKs -->
@@ -158,7 +225,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <script>
-    const APP_PASSWORD = "0909";
+    const APP_PASSWORD = "1234";
 
     const FIREBASE_CONFIG = {
       apiKey: "AIzaSyDuVRjuskinN49x36sB0TmfxD7NNshTT8",
@@ -200,6 +267,122 @@
     let currentStrokeUnsubscribe = null;
     let resizeHandler = null;
 
+    // 階層ブラウズ状態
+    let currentFolderId = null; // null = ルート階層
+    let activeBottomTab = 'browse'; // 'browse' | 'recent'
+    let searchQuery = '';
+    let pendingMoveDocId = null;
+
+    // =========================================================================
+    // 容量チェック・超過メッセージ・自動圧縮ユーティリティ
+    // =========================================================================
+    let lastQuotaAlertAt = 0;
+
+    function showQuotaExceededAlert(message = '許容量を超えています。') {
+      const now = Date.now();
+      if (now - lastQuotaAlertAt < 1500) return;
+      lastQuotaAlertAt = now;
+      alert(message);
+    }
+
+    function notifyIfQuotaExceeded(err, customMessage = '許容量を超えています。') {
+      const code = (err && err.code) ? String(err.code).toLowerCase() : '';
+      const name = (err && err.name) ? String(err.name).toLowerCase() : '';
+      const msg = (err && err.message) ? String(err.message).toLowerCase() : '';
+
+      const isQuotaError =
+        code.includes('resource-exhausted') ||
+        code.includes('invalid-argument') ||
+        name.includes('quotaexceedederror') ||
+        msg.includes('quota') ||
+        msg.includes('exceeds the maximum allowed size') ||
+        msg.includes('too large');
+
+      if (isQuotaError) {
+        showQuotaExceededAlert(customMessage);
+        return true;
+      }
+      return false;
+    }
+
+    function safeSetLocalStorage(key, valueStr) {
+      try {
+        localStorage.setItem(key, valueStr);
+        return true;
+      } catch (err) {
+        console.error('localStorage save error:', err);
+        if (!notifyIfQuotaExceeded(err, '許容量を超えています。ブラウザの保存容量が上限に達しました。')) {
+          showQuotaExceededAlert('許容量を超えています。データを保存できませんでした。');
+        }
+        return false;
+      }
+    }
+
+    function estimateDataUrlBytes(dataUrl) {
+      if (!dataUrl || !dataUrl.includes(',')) return 0;
+      const base64 = dataUrl.split(',')[1];
+      const padding = (base64.match(/=+$/) || [''])[0].length;
+      return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('ファイル読み込みに失敗しました'));
+        reader.onload = (event) => resolve(event.target.result);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function compressImageToTargetBytes(file, targetBytes = 500 * 1024) {
+      const originalDataUrl = await readFileAsDataUrl(file);
+      const originalBytes = estimateDataUrlBytes(originalDataUrl);
+
+      if (originalBytes > 0 && originalBytes <= targetBytes) {
+        return originalDataUrl;
+      }
+
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        image.onload = () => resolve(image);
+        image.src = originalDataUrl;
+      });
+
+      const maxDims = [1600, 1280, 1024, 800];
+      const qualities = [0.8, 0.65, 0.5, 0.38];
+      let bestDataUrl = originalDataUrl;
+
+      for (const maxDim of maxDims) {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) {
+            height = Math.max(1, Math.round((height * maxDim) / width));
+            width = maxDim;
+          } else {
+            width = Math.max(1, Math.round((width * maxDim) / height));
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        for (const q of qualities) {
+          const candidateUrl = canvas.toDataURL('image/jpeg', q);
+          bestDataUrl = candidateUrl;
+          if (estimateDataUrlBytes(candidateUrl) <= targetBytes) {
+            return candidateUrl;
+          }
+        }
+      }
+
+      return bestDataUrl;
+    }
+
     function initApp() {
       if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId) {
         try {
@@ -208,9 +391,10 @@
           }
           db = firebase.firestore();
           isCloudMode = true;
-          const badge = document.getElementById('syncStatusBadge');
-          badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5";
-          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>クラウド (高速同期)</span>`;
+          const dot = document.getElementById('syncStatusDot');
+          const txt = document.getElementById('syncStatusText');
+          if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block";
+          if (txt) txt.textContent = "クラウド同期";
 
           setInterval(updatePresence, 10000);
           updatePresence();
@@ -234,10 +418,11 @@
 
     const STORAGE_KEY_STATE = 'pdf_sync_board_state_v5';
     const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v3';
+    const STORAGE_KEY_RECENT = 'pdf_sync_board_recent_v1';
 
     const defaultState = {
       folders: [
-        { id: 'folder-default', name: '未分類・図面一式', parentId: null, order: 0, collapsed: false }
+        { id: 'folder-default', name: '未分類・図面一式', parentId: null, order: 0 }
       ],
       documents: [
         {
@@ -253,6 +438,7 @@
 
     let state = loadState();
     let annotations = loadAnnotations();
+    let recentDocIds = loadRecentDocs();
 
     function loadState() {
       const saved = localStorage.getItem(STORAGE_KEY_STATE);
@@ -264,8 +450,9 @@
 
     function saveState() {
       if (!isCloudMode) {
-        localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
+        return safeSetLocalStorage(STORAGE_KEY_STATE, JSON.stringify(state));
       }
+      return true;
     }
 
     function loadAnnotations() {
@@ -278,19 +465,25 @@
 
     function saveAnnotationsData() {
       if (!isCloudMode) {
-        localStorage.setItem(STORAGE_KEY_ANNOTATIONS, JSON.stringify(annotations));
+        return safeSetLocalStorage(STORAGE_KEY_ANNOTATIONS, JSON.stringify(annotations));
       }
+      return true;
     }
 
-    document.getElementById('clearStorageBtn').addEventListener('click', () => {
-      if (confirm('ローカルに保存されたデータを初期化しますか？')) {
-        localStorage.removeItem(STORAGE_KEY_STATE);
-        localStorage.removeItem(STORAGE_KEY_ANNOTATIONS);
-        location.reload();
+    function loadRecentDocs() {
+      const saved = localStorage.getItem(STORAGE_KEY_RECENT);
+      if (saved) {
+        try { return JSON.parse(saved); } catch(e) { console.error(e); }
       }
-    });
+      return [];
+    }
 
-    document.getElementById('shareRoomBtn').addEventListener('click', () => {
+    function recordRecentDoc(docId) {
+      recentDocIds = [docId, ...recentDocIds.filter(id => id !== docId)].slice(0, 20);
+      safeSetLocalStorage(STORAGE_KEY_RECENT, JSON.stringify(recentDocIds));
+    }
+
+    function copyShareUrl() {
       const shareUrl = window.location.origin + window.location.pathname + '?room=' + ROOM_ID;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(shareUrl).then(() => {
@@ -299,16 +492,88 @@
       } else {
         prompt('このURLをコピーしてください:', shareUrl);
       }
+    }
+
+    // メニューモーダル制御
+    const moreMenuModal = document.getElementById('moreMenuModal');
+    document.getElementById('openMoreMenuBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      moreMenuModal.classList.toggle('hidden');
+    });
+    moreMenuModal.addEventListener('click', (e) => {
+      if (e.target === moreMenuModal) moreMenuModal.classList.add('hidden');
     });
 
-    document.getElementById('toggleSidebarBtn').addEventListener('click', () => {
-      const sidebar = document.getElementById('sidebar');
-      sidebar.classList.toggle('hidden');
+    document.getElementById('quickAddFileBtn').addEventListener('click', () => {
+      document.getElementById('localImageInput').click();
+    });
+    document.getElementById('menuAddDocBtn').addEventListener('click', () => {
+      moreMenuModal.classList.add('hidden');
+      document.getElementById('localImageInput').click();
+    });
+    document.getElementById('menuCreateFolderBtn').addEventListener('click', () => {
+      moreMenuModal.classList.add('hidden');
+      createFolder(currentFolderId);
+    });
+    document.getElementById('inlineCreateFolderBtn').addEventListener('click', () => {
+      createFolder(currentFolderId);
+    });
+    document.getElementById('menuShareRoomBtn').addEventListener('click', () => {
+      moreMenuModal.classList.add('hidden');
+      copyShareUrl();
+    });
+    document.getElementById('bottomShareBtn').addEventListener('click', copyShareUrl);
+    document.getElementById('menuResetLocalBtn').addEventListener('click', () => {
+      moreMenuModal.classList.add('hidden');
+      if (confirm('ローカルに保存されたデータを初期化しますか？')) {
+        localStorage.removeItem(STORAGE_KEY_STATE);
+        localStorage.removeItem(STORAGE_KEY_ANNOTATIONS);
+        localStorage.removeItem(STORAGE_KEY_RECENT);
+        location.reload();
+      }
+    });
+
+    // 検索入力
+    const searchInput = document.getElementById('browseSearchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value.trim().toLowerCase();
+      clearSearchBtn.classList.toggle('hidden', searchQuery.length === 0);
+      renderBrowser();
+    });
+    clearSearchBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      searchQuery = '';
+      clearSearchBtn.classList.add('hidden');
+      renderBrowser();
+    });
+
+    // 下部タブ切替
+    document.querySelectorAll('.bottom-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeBottomTab = btn.dataset.tab;
+        document.querySelectorAll('.bottom-tab-btn').forEach(b => {
+          if (b === btn) {
+            b.className = 'bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition';
+          } else {
+            b.className = 'bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition';
+          }
+        });
+        renderBrowser();
+      });
+    });
+
+    // 階層戻るボタン
+    document.getElementById('browseBackBtn').addEventListener('click', () => {
+      if (!currentFolderId) return;
+      const cur = state.folders.find(f => f.id === currentFolderId);
+      currentFolderId = cur ? (cur.parentId || null) : null;
+      renderBrowser();
     });
 
     function initCloudListeners() {
       if (!isCloudMode) {
-        renderSidebar();
+        renderBrowser();
         return;
       }
 
@@ -317,28 +582,25 @@
       roomRef.collection('folders').onSnapshot(snap => {
         const existingDefault = state.folders.find(f => f.id === 'folder-default');
         let defaultFolder = existingDefault || {
-          id: 'folder-default', name: '未分類・図面一式', parentId: null, order: 0, collapsed: false
+          id: 'folder-default', name: '未分類・図面一式', parentId: null, order: 0
         };
 
         const list = [];
         snap.forEach(doc => {
           const d = doc.data();
-          const existing = state.folders.find(f => f.id === doc.id);
           if (doc.id === 'folder-default') {
             defaultFolder = {
               id: 'folder-default',
               name: d.name || '未分類・図面一式',
               parentId: d.parentId || null,
-              order: d.order !== undefined ? d.order : 0,
-              collapsed: existing ? existing.collapsed : false
+              order: d.order !== undefined ? d.order : 0
             };
           } else {
             list.push({
               id: doc.id,
               name: d.name,
               parentId: d.parentId || null,
-              order: d.order !== undefined ? d.order : 999,
-              collapsed: existing ? existing.collapsed : false
+              order: d.order !== undefined ? d.order : 999
             });
           }
         });
@@ -346,7 +608,7 @@
         list.push(defaultFolder);
         list.sort((a, b) => (a.order || 0) - (b.order || 0));
         state.folders = list;
-        renderSidebar();
+        renderBrowser();
       });
 
       roomRef.collection('documents').onSnapshot(snap => {
@@ -365,7 +627,7 @@
         });
         docsList.sort((a, b) => (a.order || 0) - (b.order || 0));
         state.documents = docsList;
-        renderSidebar();
+        renderBrowser();
       });
 
       roomRef.collection('presence').onSnapshot(snap => {
@@ -379,7 +641,7 @@
         });
         const countEl = document.getElementById('activeUsersCount');
         if (countEl) {
-          countEl.textContent = `${Math.max(1, count)}人`;
+          countEl.textContent = `${Math.max(1, count)}人接続`;
         }
       });
     }
@@ -395,80 +657,62 @@
       const siblings = state.folders.filter(f => (f.parentId || null) === parentId);
       const newOrder = siblings.length > 0 ? Math.max(...siblings.map(f => f.order || 0)) + 1 : 0;
 
-      if (isCloudMode) {
-        await db.collection('rooms').doc(ROOM_ID).collection('folders').add({
-          name: name.trim(),
-          parentId: parentId,
-          order: newOrder,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      } else {
-        state.folders.push({
-          id: 'folder-' + Date.now(),
-          name: name.trim(),
-          parentId: parentId,
-          order: newOrder,
-          collapsed: false
-        });
-        saveState();
-        renderSidebar();
+      try {
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID).collection('folders').add({
+            name: name.trim(),
+            parentId: parentId || null,
+            order: newOrder,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          state.folders.push({
+            id: 'folder-' + Date.now(),
+            name: name.trim(),
+            parentId: parentId || null,
+            order: newOrder
+          });
+          saveState();
+          renderBrowser();
+        }
+      } catch (err) {
+        console.error(err);
+        notifyIfQuotaExceeded(err);
       }
     }
 
-    document.getElementById('createFolderBtn').addEventListener('click', () => createFolder(null));
+    // 移動先フォルダ選択モーダル操作
+    const moveDocModal = document.getElementById('moveDocModal');
+    const moveDestinationSelect = document.getElementById('moveDestinationSelect');
+    const moveDocTargetName = document.getElementById('moveDocTargetName');
 
-    async function saveFoldersOrderToStore() {
-      if (isCloudMode) {
-        const batch = db.batch();
-        state.folders.forEach(f => {
-          const ref = db.collection('rooms').doc(ROOM_ID).collection('folders').doc(f.id);
-          batch.set(ref, {
-            name: f.name,
-            order: f.order,
-            parentId: f.parentId || null
-          }, { merge: true });
-        });
-        await batch.commit();
-      } else {
-        saveState();
-        renderSidebar();
-      }
+    function openMoveDocModal(docId) {
+      const doc = state.documents.find(d => d.id === docId);
+      if (!doc) return;
+      pendingMoveDocId = docId;
+      moveDocTargetName.textContent = `対象ファイル: ${doc.name}`;
+
+      const options = getFlatFolderOptions(null, 0);
+      moveDestinationSelect.innerHTML = options.map(opt =>
+        `<option value="${opt.id}" ${opt.id === doc.folderId ? 'selected' : ''}>${opt.label}</option>`
+      ).join('');
+
+      moveDocModal.classList.remove('hidden');
     }
 
-    async function handleFolderDrop(draggedId, targetId, dropMode) {
-      if (draggedId === targetId) return;
-      const draggedFolder = state.folders.find(f => f.id === draggedId);
-      const targetFolder = state.folders.find(f => f.id === targetId);
-      if (!draggedFolder || !targetFolder) return;
+    document.getElementById('cancelMoveDocBtn').addEventListener('click', () => {
+      pendingMoveDocId = null;
+      moveDocModal.classList.add('hidden');
+    });
 
-      const descendants = getDescendantFolderIds(draggedId);
-      if (descendants.includes(targetId)) return;
-
-      if (dropMode === 'inside') {
-        draggedFolder.parentId = targetFolder.id;
-        const siblings = state.folders.filter(f => (f.parentId || null) === targetFolder.id && f.id !== draggedId);
-        draggedFolder.order = siblings.length;
-        siblings.push(draggedFolder);
-        siblings.forEach((f, idx) => f.order = idx);
-      } else {
-        const newParentId = targetFolder.parentId || null;
-        draggedFolder.parentId = newParentId;
-
-        const siblings = state.folders
-          .filter(f => (f.parentId || null) === newParentId && f.id !== draggedId)
-          .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-        let targetIdx = siblings.findIndex(f => f.id === targetId);
-        if (targetIdx === -1) targetIdx = siblings.length;
-        if (dropMode === 'after') targetIdx += 1;
-
-        siblings.splice(targetIdx, 0, draggedFolder);
-        siblings.forEach((f, idx) => f.order = idx);
-      }
-
-      state.folders.sort((a, b) => (a.order || 0) - (b.order || 0));
-      await saveFoldersOrderToStore();
-    }
+    document.getElementById('confirmMoveDocBtn').addEventListener('click', async () => {
+      if (!pendingMoveDocId) return;
+      const targetFolderId = moveDestinationSelect.value;
+      const docId = pendingMoveDocId;
+      pendingMoveDocId = null;
+      moveDocModal.classList.add('hidden');
+      await moveDocToFolder(docId, targetFolderId);
+    });
 
     async function moveDocToFolder(docId, folderId) {
       const docsInTarget = state.documents
@@ -476,162 +720,89 @@
         .sort((a, b) => (a.order || 0) - (b.order || 0));
       const newOrder = docsInTarget.length;
 
-      if (isCloudMode) {
-        await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(docId).update({
-          folderId,
-          order: newOrder
-        });
-      } else {
-        const doc = state.documents.find(d => d.id === docId);
-        if (doc) {
-          doc.folderId = folderId;
-          doc.order = newOrder;
+      try {
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(docId).update({
+            folderId,
+            order: newOrder
+          });
+        } else {
+          const doc = state.documents.find(d => d.id === docId);
+          if (doc) {
+            doc.folderId = folderId;
+            doc.order = newOrder;
+          }
+          saveState();
+          renderBrowser();
         }
-        saveState();
-        renderSidebar();
+      } catch (err) {
+        console.error(err);
+        notifyIfQuotaExceeded(err);
       }
     }
-
-    async function reorderDocument(draggedDocId, targetDocId, dropAfter = false) {
-      if (draggedDocId === targetDocId) return;
-      const draggedDoc = state.documents.find(d => d.id === draggedDocId);
-      const targetDoc = state.documents.find(d => d.id === targetDocId);
-      if (!draggedDoc || !targetDoc) return;
-
-      const targetFolderId = targetDoc.folderId;
-      draggedDoc.folderId = targetFolderId;
-
-      const folderDocs = state.documents
-        .filter(d => d.folderId === targetFolderId && d.id !== draggedDocId)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      let targetIndex = folderDocs.findIndex(d => d.id === targetDocId);
-      if (targetIndex === -1) targetIndex = folderDocs.length;
-      if (dropAfter) targetIndex += 1;
-
-      folderDocs.splice(targetIndex, 0, draggedDoc);
-      folderDocs.forEach((d, idx) => d.order = idx);
-
-      if (isCloudMode) {
-        const batch = db.batch();
-        folderDocs.forEach(d => {
-          const ref = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
-          batch.update(ref, { order: d.order, folderId: d.folderId });
-        });
-        await batch.commit();
-      } else {
-        saveState();
-        renderSidebar();
-      }
-    }
-
-    async function shiftDocumentOrder(docId, direction) {
-      const targetDoc = state.documents.find(d => d.id === docId);
-      if (!targetDoc) return;
-
-      const folderDocs = state.documents
-        .filter(d => d.folderId === targetDoc.folderId)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      const idx = folderDocs.findIndex(d => d.id === docId);
-      const swapIdx = idx + direction;
-      if (idx === -1 || swapIdx < 0 || swapIdx >= folderDocs.length) return;
-
-      const temp = folderDocs[idx];
-      folderDocs[idx] = folderDocs[swapIdx];
-      folderDocs[swapIdx] = temp;
-
-      folderDocs.forEach((d, i) => d.order = i);
-
-      if (isCloudMode) {
-        const batch = db.batch();
-        folderDocs.forEach(d => {
-          const ref = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
-          batch.update(ref, { order: d.order });
-        });
-        await batch.commit();
-      } else {
-        saveState();
-        renderSidebar();
-      }
-    }
-
-    async function shiftFolderOrder(folderId, direction) {
-      const targetFolder = state.folders.find(f => f.id === folderId);
-      if (!targetFolder) return;
-
-      const parentId = targetFolder.parentId || null;
-      const siblings = state.folders
-        .filter(f => (f.parentId || null) === parentId)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      const idx = siblings.findIndex(f => f.id === folderId);
-      const swapIdx = idx + direction;
-      if (idx === -1 || swapIdx < 0 || swapIdx >= siblings.length) return;
-
-      const temp = siblings[idx];
-      siblings[idx] = siblings[swapIdx];
-      siblings[swapIdx] = temp;
-
-      siblings.forEach((f, i) => f.order = i);
-      state.folders.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      await saveFoldersOrderToStore();
-    }
-
-    document.getElementById('addImageDocBtn').addEventListener('click', () => {
-      document.getElementById('localImageInput').click();
-    });
 
     document.getElementById('localImageInput').addEventListener('change', async (e) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
 
-      const defaultDocs = state.documents.filter(d => d.folderId === 'folder-default');
-      let nextOrder = defaultDocs.length > 0 ? Math.max(...defaultDocs.map(d => d.order || 0)) + 1 : 0;
+      const targetFolderId = currentFolderId || 'folder-default';
+      const targetDocs = state.documents.filter(d => d.folderId === targetFolderId);
+      let nextOrder = targetDocs.length > 0 ? Math.max(...targetDocs.map(d => d.order || 0)) + 1 : 0;
 
       for (const file of files) {
-        await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            const dataUrl = event.target.result;
-            const docName = file.name;
-            const lowerName = file.name.toLowerCase();
+        try {
+          const lowerName = file.name.toLowerCase();
+          let fileType = 'image';
+          let dataUrl = '';
 
-            let fileType = 'image';
-            if (lowerName.endsWith('.pdf')) {
-              fileType = 'pdf';
-            } else if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
-              fileType = 'cad';
-            }
+          if (lowerName.endsWith('.pdf')) {
+            fileType = 'pdf';
+            dataUrl = await readFileAsDataUrl(file);
+          } else if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
+            fileType = 'cad';
+            dataUrl = await readFileAsDataUrl(file);
+          } else {
+            fileType = 'image';
+            dataUrl = await compressImageToTargetBytes(file, 500 * 1024);
+          }
 
-            if (isCloudMode) {
-              await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
-                name: docName,
-                folderId: 'folder-default',
-                type: fileType,
-                dataUrl: dataUrl,
-                order: nextOrder++,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-              });
-            } else {
-              const newId = 'doc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-              state.documents.push({
-                id: newId,
-                name: docName,
-                folderId: 'folder-default',
-                type: fileType,
-                dataUrl: dataUrl,
-                order: nextOrder++,
-                numPages: 1
-              });
-              saveState();
-              renderSidebar();
+          if (isCloudMode && dataUrl.length > 950000) {
+            showQuotaExceededAlert(`許容量を超えています。\n「${file.name}」は1ファイルの保存上限を超えているため追加できません。`);
+            continue;
+          }
+
+          if (isCloudMode) {
+            await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
+              name: file.name,
+              folderId: targetFolderId,
+              type: fileType,
+              dataUrl: dataUrl,
+              order: nextOrder++,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          } else {
+            const newId = 'doc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+            state.documents.push({
+              id: newId,
+              name: file.name,
+              folderId: targetFolderId,
+              type: fileType,
+              dataUrl: dataUrl,
+              order: nextOrder++,
+              numPages: 1
+            });
+            const savedOk = saveState();
+            if (!savedOk) {
+              state.documents = state.documents.filter(d => d.id !== newId);
             }
-            resolve();
-          };
-          reader.readAsDataURL(file);
-        });
+            renderBrowser();
+          }
+        } catch (err) {
+          console.error('File add failed:', err);
+          if (!notifyIfQuotaExceeded(err, `許容量を超えています。\n「${file.name}」を追加できませんでした。`)) {
+            alert(`「${file.name}」の追加に失敗しました。`);
+          }
+        }
       }
       e.target.value = '';
     });
@@ -659,471 +830,268 @@
       return options;
     }
 
-    function createDocItemElement(doc, docIndex, totalDocs, flatOptions, isSubFolder = false) {
-      const item = document.createElement('div');
-      item.draggable = true;
-      item.className = isSubFolder
-        ? 'p-2 rounded-lg bg-slate-950 hover:bg-slate-800/80 border border-slate-700/80 flex flex-col gap-1.5 transition cursor-pointer shadow-sm relative'
-        : 'p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800/80 border border-slate-700/80 flex flex-col gap-2 transition cursor-pointer shadow-sm relative';
+    function getFolderPath(folderId) {
+      const path = [];
+      let curId = folderId;
+      const visited = new Set();
+      while (curId && !visited.has(curId)) {
+        visited.add(curId);
+        const found = state.folders.find(f => f.id === curId);
+        if (!found) break;
+        path.unshift(found);
+        curId = found.parentId || null;
+      }
+      return path;
+    }
 
-      item.addEventListener('dragstart', e => {
-        e.stopPropagation();
-        e.dataTransfer.setData('text/plain', doc.id);
+    function renderBreadcrumb() {
+      const bar = document.getElementById('breadcrumbBar');
+      if (activeBottomTab !== 'browse' || !currentFolderId) {
+        bar.classList.add('hidden');
+        bar.innerHTML = '';
+        return;
+      }
+
+      bar.classList.remove('hidden');
+      const path = getFolderPath(currentFolderId);
+      bar.innerHTML = '';
+
+      const rootBtn = document.createElement('button');
+      rootBtn.className = 'text-blue-600 hover:underline font-medium shrink-0';
+      rootBtn.textContent = 'ブラウズ';
+      rootBtn.addEventListener('click', () => {
+        currentFolderId = null;
+        renderBrowser();
       });
+      bar.appendChild(rootBtn);
 
-      item.addEventListener('dragover', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = item.getBoundingClientRect();
-        const isBottomHalf = (e.clientY - rect.top) > rect.height / 2;
-        item.style.borderTop = isBottomHalf ? '' : '3px solid #10b981';
-        item.style.borderBottom = isBottomHalf ? '3px solid #10b981' : '';
-      });
+      path.forEach((f, idx) => {
+        const sep = document.createElement('span');
+        sep.className = 'text-slate-400 shrink-0';
+        sep.textContent = '›';
+        bar.appendChild(sep);
 
-      item.addEventListener('dragleave', e => {
-        e.stopPropagation();
-        item.style.borderTop = '';
-        item.style.borderBottom = '';
-      });
-
-      item.addEventListener('drop', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = item.getBoundingClientRect();
-        const isBottomHalf = (e.clientY - rect.top) > rect.height / 2;
-        item.style.borderTop = '';
-        item.style.borderBottom = '';
-
-        const draggedDocId = e.dataTransfer.getData('text/plain');
-        if (draggedDocId && draggedDocId !== doc.id) {
-          reorderDocument(draggedDocId, doc.id, isBottomHalf);
-        }
-      });
-
-      const folderOptions = flatOptions.map(opt =>
-        `<option value="${opt.id}" ${opt.id === doc.folderId ? 'selected' : ''}>${opt.label}</option>`
-      ).join('');
-
-      let icon = '📄';
-      if (doc.type === 'image') icon = '🖼️';
-      if (doc.type === 'cad') icon = '📐';
-
-      const upDisabled = docIndex === 0 ? 'opacity-30 pointer-events-none' : 'hover:bg-slate-700';
-      const downDisabled = docIndex === totalDocs - 1 ? 'opacity-30 pointer-events-none' : 'hover:bg-slate-700';
-
-      item.innerHTML = `
-        <div class="flex items-center justify-between gap-1">
-          <span class="cursor-grab text-slate-500 text-xs pr-0.5" title="ドラッグで順番入替">☰</span>
-          <span class="text-xs font-bold text-slate-100 truncate flex-1">${icon} ${doc.name}</span>
-          <div class="flex items-center gap-0.5 shrink-0">
-            <button class="doc-up-btn px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded text-[10px] ${upDisabled}" title="上へ">↑</button>
-            <button class="doc-down-btn px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded text-[10px] ${downDisabled}" title="下へ">↓</button>
-          </div>
-          <span class="text-[11px] bg-blue-600 text-white px-2 py-0.5 rounded font-semibold shrink-0 ml-0.5">開く ➔</span>
-          <button class="delete-doc-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0" title="削除">🗑️</button>
-        </div>
-        <select class="move-folder-select w-full bg-slate-950 text-[10px] text-slate-400 rounded px-1.5 py-1 border border-slate-800">
-          ${folderOptions}
-        </select>
-      `;
-
-      item.addEventListener('click', (e) => {
-        if (
-          e.target.tagName === 'SELECT' ||
-          e.target.tagName === 'OPTION' ||
-          e.target.closest('.delete-doc-btn') ||
-          e.target.closest('.doc-up-btn') ||
-          e.target.closest('.doc-down-btn')
-        ) return;
-        openViewer(doc.id);
-      });
-
-      item.querySelector('.doc-up-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        shiftDocumentOrder(doc.id, -1);
-      });
-
-      item.querySelector('.doc-down-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        shiftDocumentOrder(doc.id, 1);
-      });
-
-      item.querySelector('.move-folder-select').addEventListener('change', e => {
-        moveDocToFolder(doc.id, e.target.value);
-      });
-
-      item.querySelector('.delete-doc-btn').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!confirm(`「${doc.name}」を削除しますか？`)) return;
-        if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(doc.id).delete();
+        if (idx === path.length - 1) {
+          const curSpan = document.createElement('span');
+          curSpan.className = 'text-slate-700 font-semibold truncate';
+          curSpan.textContent = f.name;
+          bar.appendChild(curSpan);
         } else {
-          state.documents = state.documents.filter(d => d.id !== doc.id);
-          saveState();
-          renderSidebar();
+          const stepBtn = document.createElement('button');
+          stepBtn.className = 'text-blue-600 hover:underline font-medium shrink-0';
+          stepBtn.textContent = f.name;
+          stepBtn.addEventListener('click', () => {
+            currentFolderId = f.id;
+            renderBrowser();
+          });
+          bar.appendChild(stepBtn);
         }
       });
-
-      return item;
     }
 
-    function getFolderDropMode(element, clientY) {
-      const rect = element.getBoundingClientRect();
-      const relY = clientY - rect.top;
-      const ratio = relY / rect.height;
-      if (ratio < 0.28) return 'before';
-      if (ratio > 0.72) return 'after';
-      return 'inside';
-    }
+    function renderBrowser() {
+      const headerTitle = document.getElementById('browseHeaderTitle');
+      const backBtn = document.getElementById('browseBackBtn');
+      const folderSection = document.getElementById('folderSection');
+      const folderGroupList = document.getElementById('folderGroupList');
+      const docGroupList = document.getElementById('docGroupList');
+      const docSectionTitle = document.getElementById('docSectionTitle');
+      const docCountLabel = document.getElementById('docCountLabel');
 
-    function applyFolderDropIndicator(element, mode) {
-      element.style.borderTop = '';
-      element.style.borderBottom = '';
-      element.classList.remove('ring-2', 'ring-blue-500');
-      if (mode === 'before') {
-        element.style.borderTop = '3px solid #38bdf8';
-      } else if (mode === 'after') {
-        element.style.borderBottom = '3px solid #38bdf8';
+      renderBreadcrumb();
+
+      if (activeBottomTab === 'recent') {
+        headerTitle.textContent = '最近使った項目';
+        backBtn.classList.add('hidden');
+        folderSection.classList.add('hidden');
+        docSectionTitle.textContent = '最近開いた図面';
+
+        let recentDocs = recentDocIds
+          .map(id => state.documents.find(d => d.id === id))
+          .filter(Boolean);
+
+        if (searchQuery) {
+          recentDocs = recentDocs.filter(d => d.name.toLowerCase().includes(searchQuery));
+        }
+
+        docCountLabel.textContent = `${recentDocs.length}件`;
+        renderDocRows(docGroupList, recentDocs);
+        return;
+      }
+
+      backBtn.classList.toggle('hidden', !currentFolderId);
+      if (currentFolderId) {
+        const curFolder = state.folders.find(f => f.id === currentFolderId);
+        headerTitle.textContent = curFolder ? curFolder.name : 'フォルダ';
       } else {
-        element.classList.add('ring-2', 'ring-blue-500');
+        headerTitle.textContent = 'ブラウズ';
       }
+
+      let foldersToShow = [];
+      let docsToShow = [];
+
+      if (searchQuery) {
+        folderSection.classList.remove('hidden');
+        foldersToShow = state.folders
+          .filter(f => f.name.toLowerCase().includes(searchQuery))
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
+        docsToShow = state.documents
+          .filter(d => d.name.toLowerCase().includes(searchQuery))
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
+        docSectionTitle.textContent = '検索結果の図面・ファイル';
+      } else {
+        folderSection.classList.remove('hidden');
+        foldersToShow = state.folders
+          .filter(f => (f.parentId || null) === currentFolderId)
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        if (!currentFolderId) {
+          // ルート画面では未分類フォルダの直下ファイルまたは全件表示（デフォルトフォルダ内はフォルダから開く）
+          docsToShow = state.documents
+            .filter(d => !d.folderId)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+          docSectionTitle.textContent = 'その他のファイル';
+        } else {
+          docsToShow = state.documents
+            .filter(d => d.folderId === currentFolderId)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+          docSectionTitle.textContent = '図面・ファイル';
+        }
+      }
+
+      // フォルダ行を描画
+      folderGroupList.innerHTML = '';
+      if (foldersToShow.length === 0) {
+        folderGroupList.innerHTML = `<div class="px-4 py-4 text-xs text-slate-400 text-center">表示するフォルダがありません</div>`;
+      } else {
+        foldersToShow.forEach(folder => {
+          const childFoldersCount = state.folders.filter(f => f.parentId === folder.id).length;
+          const directDocsCount = state.documents.filter(d => d.folderId === folder.id).length;
+          const totalItems = childFoldersCount + directDocsCount;
+
+          const row = document.createElement('div');
+          row.className = 'px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer';
+
+          row.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0 flex-1">
+              <span class="text-xl text-sky-500 shrink-0">📁</span>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-semibold text-slate-900 truncate">${folder.name}</div>
+                <div class="text-[11px] text-slate-400">${totalItems}項目</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              ${folder.id !== 'folder-default' ? `<button class="delete-folder-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50" title="フォルダ削除">削除</button>` : ''}
+              <span class="text-slate-300 font-bold text-base pl-1">›</span>
+            </div>
+          `;
+
+          row.addEventListener('click', (e) => {
+            if (e.target.closest('.delete-folder-btn')) return;
+            currentFolderId = folder.id;
+            renderBrowser();
+          });
+
+          const delBtn = row.querySelector('.delete-folder-btn');
+          if (delBtn) {
+            delBtn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const targetFolderIds = getDescendantFolderIds(folder.id);
+              const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
+              if (!confirm(`「${folder.name}」フォルダを削除しますか？\n（中身のファイル ${targetDocs.length}件も削除されます）`)) return;
+
+              if (isCloudMode) {
+                const batch = db.batch();
+                targetDocs.forEach(d => {
+                  batch.delete(db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id));
+                });
+                targetFolderIds.forEach(fId => {
+                  if (fId !== 'folder-default') {
+                    batch.delete(db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId));
+                  }
+                });
+                await batch.commit();
+              } else {
+                state.documents = state.documents.filter(d => !targetFolderIds.includes(d.folderId));
+                state.folders = state.folders.filter(f => !targetFolderIds.includes(f.id));
+                if (currentFolderId && targetFolderIds.includes(currentFolderId)) {
+                  currentFolderId = null;
+                }
+                saveState();
+                renderBrowser();
+              }
+            });
+          }
+
+          folderGroupList.appendChild(row);
+        });
+      }
+
+      docCountLabel.textContent = `${docsToShow.length}件`;
+      renderDocRows(docGroupList, docsToShow);
     }
 
-    function clearFolderDropIndicator(element) {
-      element.style.borderTop = '';
-      element.style.borderBottom = '';
-      element.classList.remove('ring-2', 'ring-blue-500');
-    }
-
-    function renderSidebar() {
-      const container = document.getElementById('folderListContainer');
+    function renderDocRows(container, docsList) {
       container.innerHTML = '';
-      document.getElementById('docCountLabel').textContent = `${state.documents.length} ファイル`;
-
-      state.folders.sort((a, b) => (a.order || 0) - (b.order || 0));
-      const flatOptions = getFlatFolderOptions(null, 0);
-
-      function renderFolderTree(parentId, depth = 0) {
-        const foldersAtLevel = state.folders.filter(f => (f.parentId || null) === parentId);
-
-        foldersAtLevel.forEach((folder, folderIdx) => {
-          const docsInFolder = state.documents
-            .filter(d => d.folderId === folder.id)
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
-          const childFolders = state.folders.filter(f => f.parentId === folder.id);
-
-          const folderEl = document.createElement('div');
-          folderEl.className = depth === 0
-            ? 'bg-slate-800/60 border border-slate-800 rounded-xl overflow-hidden transition-all'
-            : 'bg-slate-900/80 border border-slate-700/80 rounded-lg overflow-hidden transition-all mt-1.5';
-          folderEl.draggable = true;
-
-          folderEl.addEventListener('dragstart', e => {
-            e.stopPropagation();
-            e.dataTransfer.setData('text/folder-id', folder.id);
-          });
-
-          folderEl.addEventListener('dragover', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const mode = getFolderDropMode(folderEl, e.clientY);
-            applyFolderDropIndicator(folderEl, mode);
-          });
-
-          folderEl.addEventListener('dragleave', e => {
-            e.stopPropagation();
-            clearFolderDropIndicator(folderEl);
-          });
-
-          folderEl.addEventListener('drop', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const mode = getFolderDropMode(folderEl, e.clientY);
-            clearFolderDropIndicator(folderEl);
-
-            const draggedFolderId = e.dataTransfer.getData('text/folder-id');
-            const draggedDocId = e.dataTransfer.getData('text/plain');
-
-            if (draggedFolderId && draggedFolderId !== folder.id) {
-              handleFolderDrop(draggedFolderId, folder.id, mode);
-            } else if (draggedDocId) {
-              moveDocToFolder(draggedDocId, folder.id);
-            }
-          });
-
-          const header = document.createElement('div');
-          header.className = 'px-2.5 py-2 bg-slate-800 flex items-center justify-between cursor-pointer text-xs font-semibold text-slate-200 gap-1';
-
-          const fUpDisabled = folderIdx === 0 ? 'opacity-30 pointer-events-none' : 'hover:bg-slate-600';
-          const fDownDisabled = folderIdx === foldersAtLevel.length - 1 ? 'opacity-30 pointer-events-none' : 'hover:bg-slate-600';
-
-          const sortFolderBtnsHtml = `
-            <button class="folder-up-btn px-1.5 py-0.5 bg-slate-700 text-slate-200 rounded text-[10px] shrink-0 ${fUpDisabled}" title="フォルダを上へ">↑</button>
-            <button class="folder-down-btn px-1.5 py-0.5 bg-slate-700 text-slate-200 rounded text-[10px] shrink-0 ${fDownDisabled}" title="フォルダを下へ">↓</button>
-          `;
-          const addSubFolderBtnHtml = `<button class="add-subfolder-btn px-1.5 py-0.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded text-[10px] shrink-0" title="サブフォルダ作成">＋📁</button>`;
-          let deleteFolderBtnHtml = folder.id !== 'folder-default' ? `<button class="delete-folder-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0" title="削除">🗑️</button>` : '';
-
-          header.innerHTML = `
-            <div class="flex items-center gap-1.5 truncate flex-1">
-              <span class="cursor-grab text-slate-400" title="ドラッグで並び替え">☰</span>
-              <span>${folder.collapsed ? '📁' : '📂'}</span>
-              <span class="truncate">${folder.name}</span>
-              <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded-full text-slate-300">${docsInFolder.length}</span>
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-              ${sortFolderBtnsHtml}
-              ${addSubFolderBtnHtml}
-              ${deleteFolderBtnHtml}
-            </div>
-          `;
-
-          header.addEventListener('click', (e) => {
-            if (
-              e.target.closest('.delete-folder-btn') ||
-              e.target.closest('.add-subfolder-btn') ||
-              e.target.closest('.folder-up-btn') ||
-              e.target.closest('.folder-down-btn')
-            ) return;
-            folder.collapsed = !folder.collapsed;
-            renderSidebar();
-          });
-
-          header.querySelector('.folder-up-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            shiftFolderOrder(folder.id, -1);
-          });
-
-          header.querySelector('.folder-down-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            shiftFolderOrder(folder.id, 1);
-          });
-
-          const addSubBtn = header.querySelector('.add-subfolder-btn');
-          if (addSubBtn) {
-            addSubBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              createFolder(folder.id);
-            });
-          }
-
-          const delFolderBtn = header.querySelector('.delete-folder-btn');
-          if (delFolderBtn) {
-            delFolderBtn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              const targetFolderIds = getDescendantFolderIds(folder.id);
-              const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
-
-              const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダを削除しますか？\n（中身のファイル ${targetDocs.length}個も削除されます）`;
-              if (!confirm(msg)) return;
-
-              if (isCloudMode) {
-                const batch = db.batch();
-                targetDocs.forEach(d => {
-                  batch.delete(db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id));
-                });
-                targetFolderIds.forEach(fId => {
-                  if (fId !== 'folder-default') {
-                    batch.delete(db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId));
-                  }
-                });
-                await batch.commit();
-              } else {
-                state.documents = state.documents.filter(d => !targetFolderIds.includes(d.folderId));
-                state.folders = state.folders.filter(f => !targetFolderIds.includes(f.id));
-                saveState();
-                renderSidebar();
-              }
-            });
-          }
-
-          folderEl.appendChild(header);
-
-          if (!folder.collapsed) {
-            const bodyEl = document.createElement('div');
-            bodyEl.className = 'p-2 space-y-2';
-
-            const subFolderContainer = document.createElement('div');
-            subFolderContainer.className = 'pl-2 border-l-2 border-slate-700/70 space-y-1.5';
-            if (childFolders.length > 0) {
-              bodyEl.appendChild(subFolderContainer);
-            }
-
-            if (docsInFolder.length === 0 && childFolders.length === 0) {
-              bodyEl.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-2">ファイルをドラッグ、または「＋📁」でサブフォルダ作成</div>`;
-            }
-
-            docsInFolder.forEach((doc, idx) => {
-              const itemEl = createDocItemElement(doc, idx, docsInFolder.length, flatOptions, false);
-              bodyEl.appendChild(itemEl);
-            });
-
-            folderEl.appendChild(bodyEl);
-
-            if (childFolders.length > 0) {
-              renderSubFoldersInto(subFolderContainer, folder.id, depth + 1, flatOptions);
-            }
-          }
-
-          container.appendChild(folderEl);
-        });
+      if (docsList.length === 0) {
+        container.innerHTML = `<div class="px-4 py-5 text-xs text-slate-400 text-center">ファイルがありません</div>`;
+        return;
       }
 
-      function renderSubFoldersInto(targetEl, parentId, depth, flatOptions) {
-        const foldersAtLevel = state.folders.filter(f => (f.parentId || null) === parentId);
-        foldersAtLevel.forEach((folder, folderIdx) => {
-          const docsInFolder = state.documents
-            .filter(d => d.folderId === folder.id)
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
-          const childFolders = state.folders.filter(f => f.parentId === folder.id);
+      docsList.forEach(doc => {
+        const folderObj = state.folders.find(f => f.id === doc.folderId);
+        const folderLabel = folderObj ? folderObj.name : '未分類・図面一式';
 
-          const folderEl = document.createElement('div');
-          folderEl.className = 'bg-slate-900/90 border border-slate-700/80 rounded-lg overflow-hidden transition-all';
-          folderEl.draggable = true;
+        let icon = '📄';
+        if (doc.type === 'image') icon = '🖼️';
+        if (doc.type === 'cad') icon = '📐';
 
-          folderEl.addEventListener('dragstart', e => {
-            e.stopPropagation();
-            e.dataTransfer.setData('text/folder-id', folder.id);
-          });
+        const row = document.createElement('div');
+        row.className = 'px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer';
 
-          folderEl.addEventListener('dragover', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const mode = getFolderDropMode(folderEl, e.clientY);
-            applyFolderDropIndicator(folderEl, mode);
-          });
-
-          folderEl.addEventListener('dragleave', e => {
-            e.stopPropagation();
-            clearFolderDropIndicator(folderEl);
-          });
-
-          folderEl.addEventListener('drop', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const mode = getFolderDropMode(folderEl, e.clientY);
-            clearFolderDropIndicator(folderEl);
-
-            const draggedFolderId = e.dataTransfer.getData('text/folder-id');
-            const draggedDocId = e.dataTransfer.getData('text/plain');
-
-            if (draggedFolderId && draggedFolderId !== folder.id) {
-              handleFolderDrop(draggedFolderId, folder.id, mode);
-            } else if (draggedDocId) {
-              moveDocToFolder(draggedDocId, folder.id);
-            }
-          });
-
-          const header = document.createElement('div');
-          header.className = 'px-2.5 py-2 bg-slate-800/90 flex items-center justify-between cursor-pointer text-xs font-semibold text-slate-200 gap-1';
-
-          const fUpDisabled = folderIdx === 0 ? 'opacity-30 pointer-events-none' : 'hover:bg-slate-600';
-          const fDownDisabled = folderIdx === foldersAtLevel.length - 1 ? 'opacity-30 pointer-events-none' : 'hover:bg-slate-600';
-
-          header.innerHTML = `
-            <div class="flex items-center gap-1.5 truncate flex-1">
-              <span class="cursor-grab text-slate-400" title="ドラッグで並び替え">☰</span>
-              <span>${folder.collapsed ? '📁' : '📂'}</span>
-              <span class="truncate">${folder.name}</span>
-              <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded-full text-slate-300">${docsInFolder.length}</span>
+        row.innerHTML = `
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <span class="text-xl shrink-0">${icon}</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-semibold text-slate-900 truncate">${doc.name}</div>
+              <div class="text-[11px] text-slate-400 truncate">📁 ${folderLabel}</div>
             </div>
-            <div class="flex items-center gap-1 shrink-0">
-              <button class="folder-up-btn px-1.5 py-0.5 bg-slate-700 text-slate-200 rounded text-[10px] shrink-0 ${fUpDisabled}" title="上へ">↑</button>
-              <button class="folder-down-btn px-1.5 py-0.5 bg-slate-700 text-slate-200 rounded text-[10px] shrink-0 ${fDownDisabled}" title="下へ">↓</button>
-              <button class="add-subfolder-btn px-1.5 py-0.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded text-[10px] shrink-0" title="サブフォルダ作成">＋📁</button>
-              <button class="delete-folder-btn px-1.5 py-0.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded text-[10px] shrink-0" title="削除">🗑️</button>
-            </div>
-          `;
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button class="move-doc-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 text-[11px] font-semibold transition">
+              移動
+            </button>
+            <button class="delete-doc-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50 transition" title="削除">
+              削除
+            </button>
+            <span class="text-slate-300 font-bold text-base pl-0.5">›</span>
+          </div>
+        `;
 
-          header.addEventListener('click', (e) => {
-            if (
-              e.target.closest('.delete-folder-btn') ||
-              e.target.closest('.add-subfolder-btn') ||
-              e.target.closest('.folder-up-btn') ||
-              e.target.closest('.folder-down-btn')
-            ) return;
-            folder.collapsed = !folder.collapsed;
-            renderSidebar();
-          });
-
-          header.querySelector('.folder-up-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            shiftFolderOrder(folder.id, -1);
-          });
-
-          header.querySelector('.folder-down-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            shiftFolderOrder(folder.id, 1);
-          });
-
-          const addSubBtn = header.querySelector('.add-subfolder-btn');
-          if (addSubBtn) {
-            addSubBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              createFolder(folder.id);
-            });
-          }
-
-          const delFolderBtn = header.querySelector('.delete-folder-btn');
-          if (delFolderBtn) {
-            delFolderBtn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              const targetFolderIds = getDescendantFolderIds(folder.id);
-              const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
-
-              const msg = `⚠️ 【フォルダ一括削除の確認】\n\n「${folder.name}」フォルダを削除しますか？`;
-              if (!confirm(msg)) return;
-
-              if (isCloudMode) {
-                const batch = db.batch();
-                targetDocs.forEach(d => {
-                  batch.delete(db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id));
-                });
-                targetFolderIds.forEach(fId => {
-                  if (fId !== 'folder-default') {
-                    batch.delete(db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId));
-                  }
-                });
-                await batch.commit();
-              } else {
-                state.documents = state.documents.filter(d => !targetFolderIds.includes(d.folderId));
-                state.folders = state.folders.filter(f => !targetFolderIds.includes(f.id));
-                saveState();
-                renderSidebar();
-              }
-            });
-          }
-
-          folderEl.appendChild(header);
-
-          if (!folder.collapsed) {
-            const bodyEl = document.createElement('div');
-            bodyEl.className = 'p-2 space-y-2';
-
-            if (childFolders.length > 0) {
-              const nestedContainer = document.createElement('div');
-              nestedContainer.className = 'pl-2 border-l-2 border-slate-700/70 space-y-1.5';
-              renderSubFoldersInto(nestedContainer, folder.id, depth + 1, flatOptions);
-              bodyEl.appendChild(nestedContainer);
-            }
-
-            if (docsInFolder.length === 0 && childFolders.length === 0) {
-              bodyEl.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-1.5">空のフォルダ</div>`;
-            }
-
-            docsInFolder.forEach((doc, idx) => {
-              const itemEl = createDocItemElement(doc, idx, docsInFolder.length, flatOptions, true);
-              bodyEl.appendChild(itemEl);
-            });
-
-            folderEl.appendChild(bodyEl);
-          }
-
-          targetEl.appendChild(folderEl);
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.move-doc-btn') || e.target.closest('.delete-doc-btn')) return;
+          openViewer(doc.id);
         });
-      }
 
-      renderFolderTree(null, 0);
+        row.querySelector('.move-doc-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openMoveDocModal(doc.id);
+        });
+
+        row.querySelector('.delete-doc-btn').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm(`「${doc.name}」を削除しますか？`)) return;
+          if (isCloudMode) {
+            await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(doc.id).delete();
+          } else {
+            state.documents = state.documents.filter(d => d.id !== doc.id);
+            saveState();
+            renderBrowser();
+          }
+        });
+
+        container.appendChild(row);
+      });
     }
 
     // =========================================================================
@@ -1146,13 +1114,14 @@
       viewerContainer.innerHTML = '';
 
       document.getElementById('appContainer').classList.remove('hidden');
-      renderSidebar();
+      renderBrowser();
     }
 
     async function openViewer(docId) {
       const doc = state.documents.find(d => d.id === docId);
       if (!doc) return;
 
+      recordRecentDoc(doc.id);
       document.getElementById('appContainer').classList.add('hidden');
       const viewerContainer = document.getElementById('viewerContainer');
       viewerContainer.classList.remove('hidden');
@@ -1290,7 +1259,6 @@
       let selectedImageId = null;
       const loadedImagesCache = {};
 
-      // クラウド同期バッチ用
       let pendingCloudSyncTimer = null;
       const pendingCloudStrokes = new Map();
 
@@ -1304,7 +1272,10 @@
           batch.set(ref, payload);
         });
         pendingCloudStrokes.clear();
-        batch.commit().catch(err => console.error('Batch stroke sync failed:', err));
+        batch.commit().catch(err => {
+          console.error('Batch stroke sync failed:', err);
+          notifyIfQuotaExceeded(err, '許容量を超えています。一部の書き込みを保存できませんでした。');
+        });
       }
 
       const pdfCanvas = document.getElementById('pdfCanvas');
@@ -1322,7 +1293,7 @@
 
         currentScale = Math.max(0.1, Math.min(5.0, +newScale.toFixed(3)));
         wrapper.style.transform = `scale(${currentScale})`;
-        
+
         if (scaleBox && pdfCanvas.width > 0 && pdfCanvas.height > 0) {
           scaleBox.style.width = `${Math.round(pdfCanvas.width * currentScale)}px`;
           scaleBox.style.height = `${Math.round(pdfCanvas.height * currentScale)}px`;
@@ -1534,7 +1505,6 @@
         }
       }
 
-      // 連続書き時の負荷を抑えるためポイント数が多い場合は間引いて丸判定
       function trySnapToCircle(stroke) {
         if (stroke.tool !== 'pen' || !stroke.points || stroke.points.length < 14) return stroke;
         let pts = stroke.points;
@@ -1870,7 +1840,6 @@
         }
       });
 
-      // 描画は即時反映し、クラウド送信は250msまとめて非同期実行
       function saveAndRedraw(stroke) {
         const key = `${doc.id}_p${currentPage}`;
         if (!annotations[key]) annotations[key] = [];
@@ -1879,16 +1848,26 @@
         const strokeId = 'st-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
         stroke.id = strokeId;
 
+        const payload = { ...stroke, createdAt: Date.now() };
+        const serializedSize = JSON.stringify(payload).length;
+        if (isCloudMode && serializedSize > 950000) {
+          showQuotaExceededAlert('許容量を超えています。このデータはサイズが大きすぎるため保存できません。');
+          return;
+        }
+
         annotations[key].push(stroke);
         drawOverlay();
 
         if (isCloudMode) {
-          const payload = { ...stroke, createdAt: Date.now() };
           pendingCloudStrokes.set(strokeId, { pageKey: key, strokeId, payload });
           if (pendingCloudSyncTimer) clearTimeout(pendingCloudSyncTimer);
           pendingCloudSyncTimer = setTimeout(flushCloudStrokes, 250);
         } else {
-          saveAnnotationsData();
+          const ok = saveAnnotationsData();
+          if (!ok) {
+            annotations[key] = annotations[key].filter(s => s.id !== strokeId);
+            drawOverlay();
+          }
         }
       }
 
@@ -1983,23 +1962,27 @@
         annotations[key].push(restored);
         drawOverlay();
 
-        if (isCloudMode) {
-          const payload = { ...restored, createdAt: Date.now() };
-          await db.collection('rooms').doc(ROOM_ID)
-            .collection('annotations').doc(key)
-            .collection('strokes').doc(restored.id).set(payload);
-        } else {
-          saveAnnotationsData();
+        try {
+          if (isCloudMode) {
+            const payload = { ...restored, createdAt: Date.now() };
+            await db.collection('rooms').doc(ROOM_ID)
+              .collection('annotations').doc(key)
+              .collection('strokes').doc(restored.id).set(payload);
+          } else {
+            saveAnnotationsData();
+          }
+        } catch (err) {
+          console.error(err);
+          notifyIfQuotaExceeded(err);
         }
       });
 
       document.getElementById('addPhotoBtn').addEventListener('click', () => document.getElementById('photoFileInput').click());
-      document.getElementById('photoFileInput').addEventListener('change', (e) => {
+      document.getElementById('photoFileInput').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const dataUrl = event.target.result;
+        try {
+          const dataUrl = await compressImageToTargetBytes(file, 500 * 1024);
           const img = new Image();
           img.onload = () => {
             const maxW = 220;
@@ -2016,8 +1999,12 @@
             if (panBtn) panBtn.click();
           };
           img.src = dataUrl;
-        };
-        reader.readAsDataURL(file);
+        } catch (err) {
+          console.error(err);
+          if (!notifyIfQuotaExceeded(err)) {
+            alert('写真の読み込みに失敗しました。');
+          }
+        }
         e.target.value = '';
       });
 
@@ -2075,7 +2062,6 @@
       }
 
       drawCanvas.addEventListener('pointerdown', (e) => {
-        // 直前のストロークが未確定で残っていれば即座に確定し、新しいポインターへ確実に引き継ぐ
         if (isDrawing && currentStroke) {
           const prevStroke = currentStroke;
           isDrawing = false;
@@ -2275,7 +2261,7 @@
       renderPage();
     }
 
-    renderSidebar();
+    renderBrowser();
   </script>
 </body>
 </html>
