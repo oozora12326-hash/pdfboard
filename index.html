@@ -89,22 +89,22 @@
     </div>
   </div>
 
-  <!-- 移動先フォルダ選択モーダル -->
+  <!-- 移動先選択モーダル（ファイル・フォルダ共用） -->
   <div id="moveDocModal" class="hidden fixed inset-0 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div class="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
       <div class="space-y-1">
-        <h3 class="font-bold text-base text-slate-900">移動先フォルダを選択</h3>
+        <h3 id="moveModalTitle" class="font-bold text-base text-slate-900">移動先フォルダを選択</h3>
         <p id="moveDocTargetName" class="text-xs text-slate-500 truncate"></p>
       </div>
       <div class="space-y-1.5">
-        <label for="moveDestinationSelect" class="block text-[11px] font-semibold text-slate-600">移動先のフォルダ</label>
+        <label for="moveDestinationSelect" class="block text-[11px] font-semibold text-slate-600">移動先</label>
         <select id="moveDestinationSelect" class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-blue-500"></select>
       </div>
       <div class="flex gap-2 pt-1">
-        <button id="cancelMoveDocBtn" class="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition">
+        <button id="cancelMoveDocBtn" type="button" class="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition">
           キャンセル
         </button>
-        <button id="confirmMoveDocBtn" class="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
+        <button id="confirmMoveDocBtn" type="button" class="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
           ここに移動
         </button>
       </div>
@@ -114,17 +114,17 @@
   <!-- メニュー（...）モーダル -->
   <div id="moreMenuModal" class="hidden fixed inset-0 bg-slate-900/35 backdrop-blur-[2px] flex items-start justify-end z-50 pt-16 pr-4">
     <div class="bg-white border border-slate-200 rounded-2xl w-60 p-2 shadow-2xl space-y-1">
-      <button id="menuAddDocBtn" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
+      <button id="menuAddDocBtn" type="button" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
         <span>📷</span><span>画像 / PDF / 図面を追加</span>
       </button>
-      <button id="menuCreateFolderBtn" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
+      <button id="menuCreateFolderBtn" type="button" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
         <span>📁</span><span>ここに新規フォルダを作成</span>
       </button>
-      <button id="menuShareRoomBtn" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
+      <button id="menuShareRoomBtn" type="button" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
         <span>🔗</span><span>共有用URLをコピー</span>
       </button>
       <div class="border-t border-slate-100 my-1"></div>
-      <button id="menuResetLocalBtn" class="w-full px-3 py-2 rounded-xl text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2.5">
+      <button id="menuResetLocalBtn" type="button" class="w-full px-3 py-2 rounded-xl text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2.5">
         <span>🔄</span><span>ローカル保存データを初期化</span>
       </button>
     </div>
@@ -132,13 +132,13 @@
 
   <!-- 明るめ階層ブラウズ画面 -->
   <div id="appContainer" class="flex-1 flex flex-col overflow-hidden relative bg-[#f2f2f7]">
-    <input type="file" id="localImageInput" class="hidden" multiple accept="image/*,application/pdf,.zwd,.zfd" />
+    <input type="file" id="localImageInput" class="hidden" multiple accept="image/*,.png,.jpg,.jpeg,.webp,application/pdf,.zwd,.zfd" />
 
     <!-- 上部ヘッダー＆検索バー -->
     <header class="bg-[#f2f2f7]/95 backdrop-blur-md border-b border-slate-200/80 px-4 pt-3 pb-2.5 shrink-0 z-20 space-y-2.5">
       <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 min-w-0">
-          <button id="browseBackBtn" class="hidden w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-blue-600 flex items-center justify-center shadow-sm shrink-0" title="上の階層へ戻る">
+          <button id="browseBackBtn" type="button" class="hidden w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-blue-600 flex items-center justify-center shadow-sm shrink-0" title="上の階層へ戻る">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div class="min-w-0">
@@ -155,10 +155,10 @@
         </div>
 
         <div class="flex items-center gap-1.5 shrink-0">
-          <button id="quickAddFileBtn" class="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition flex items-center gap-1">
+          <button id="quickAddFileBtn" type="button" class="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition flex items-center gap-1">
             <span>＋</span><span>追加</span>
           </button>
-          <button id="openMoreMenuBtn" class="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-slate-700 flex items-center justify-center shadow-sm transition" title="メニュー">
+          <button id="openMoreMenuBtn" type="button" class="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-slate-700 flex items-center justify-center shadow-sm transition" title="メニュー">
             <span class="font-bold tracking-widest text-xs">•••</span>
           </button>
         </div>
@@ -174,7 +174,7 @@
             placeholder="図面・フォルダを検索"
             class="w-full bg-[#e3e3e8]/85 focus:bg-white text-slate-900 placeholder-slate-500 text-sm rounded-xl pl-9 pr-8 py-2 border border-transparent focus:border-blue-400 focus:outline-none transition"
           />
-          <button id="clearSearchBtn" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs px-1" title="検索をクリア">✕</button>
+          <button id="clearSearchBtn" type="button" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs px-1" title="検索をクリア">✕</button>
         </div>
       </div>
     </header>
@@ -189,7 +189,7 @@
         <section id="folderSection" class="space-y-1.5">
           <div class="px-3 flex items-center justify-between">
             <h2 class="text-xs font-bold text-slate-500 tracking-wide">フォルダ</h2>
-            <button id="inlineCreateFolderBtn" class="text-xs font-semibold text-blue-600 hover:text-blue-500">＋ 新規フォルダ</button>
+            <button id="inlineCreateFolderBtn" type="button" class="text-xs font-semibold text-blue-600 hover:text-blue-500">＋ 新規フォルダ</button>
           </div>
           <div id="folderGroupList" class="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs"></div>
         </section>
@@ -209,15 +209,15 @@
     <!-- 下部フローティングタブバー -->
     <nav class="fixed bottom-4 inset-x-0 flex justify-center px-4 z-30 pointer-events-none">
       <div class="pointer-events-auto bg-white/90 backdrop-blur-xl border border-slate-200/90 shadow-lg rounded-full px-2 py-1.5 flex items-center gap-1">
-        <button data-tab="recent" class="bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
+        <button data-tab="recent" type="button" class="bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
           <span class="text-base leading-none">🕒</span>
           <span>最近使った項目</span>
         </button>
-        <button data-tab="browse" class="bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition">
+        <button data-tab="browse" type="button" class="bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition">
           <span class="text-base leading-none">📁</span>
           <span>ブラウズ</span>
         </button>
-        <button id="bottomShareBtn" class="px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
+        <button id="bottomShareBtn" type="button" class="px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
           <span class="text-base leading-none">👥</span>
           <span>共有</span>
         </button>
@@ -278,8 +278,10 @@
     let currentFolderId = null;
     let activeBottomTab = 'browse';
     let searchQuery = '';
-    let pendingMoveDocId = null;
-    let movingDocIdInFlight = null;
+
+    // 移動モーダル状態（type: 'doc' | 'folder'）
+    let pendingMoveTarget = null;
+    let movingItemInFlight = null;
 
     let isLongPressReordering = false;
     let suppressNextClick = false;
@@ -592,18 +594,23 @@
         const list = [];
         snap.forEach(doc => {
           const d = doc.data();
+          const existingLocalFolder = state.folders.find(item => item.id === doc.id);
+          const resolvedParentId = (movingItemInFlight && movingItemInFlight.type === 'folder' && movingItemInFlight.id === doc.id && existingLocalFolder)
+            ? existingLocalFolder.parentId
+            : (d.parentId || null);
+
           if (doc.id === 'folder-default') {
             defaultFolder = {
               id: 'folder-default',
               name: d.name || '未分類・図面一式',
-              parentId: d.parentId || null,
+              parentId: resolvedParentId,
               order: d.order !== undefined ? d.order : 0
             };
           } else {
             list.push({
               id: doc.id,
               name: d.name,
-              parentId: d.parentId || null,
+              parentId: resolvedParentId,
               order: d.order !== undefined ? d.order : 999
             });
           }
@@ -621,7 +628,7 @@
           const data = docSnap.data();
           const existingLocal = state.documents.find(item => item.id === docSnap.id);
           const mergedDataUrl = data.dataUrl || (existingLocal ? existingLocal.dataUrl : null);
-          const resolvedFolderId = (movingDocIdInFlight === docSnap.id && existingLocal)
+          const resolvedFolderId = (movingItemInFlight && movingItemInFlight.type === 'doc' && movingItemInFlight.id === docSnap.id && existingLocal)
             ? existingLocal.folderId
             : (data.folderId || 'folder-default');
 
@@ -691,48 +698,60 @@
       }
     }
 
+    // 移動先選択モーダル（ファイル・フォルダ両対応）
     const moveDocModal = document.getElementById('moveDocModal');
+    const moveModalTitle = document.getElementById('moveModalTitle');
     const moveDestinationSelect = document.getElementById('moveDestinationSelect');
     const moveDocTargetName = document.getElementById('moveDocTargetName');
 
     function openMoveDocModal(docId) {
       const doc = state.documents.find(d => d.id === docId);
       if (!doc) return;
-      pendingMoveDocId = docId;
+      pendingMoveTarget = { type: 'doc', id: docId };
+      moveModalTitle.textContent = '移動先フォルダを選択';
       moveDocTargetName.textContent = `対象ファイル: ${doc.name}`;
 
       const options = getFlatFolderOptions(null, 0);
       moveDestinationSelect.innerHTML = options.map(opt =>
-        `<option value="${opt.id}" ${opt.id === doc.folderId ? 'selected' : ''}>${opt.label}</option>`
+        `<option value="${opt.id}" ${opt.id === (doc.folderId || 'folder-default') ? 'selected' : ''}>${opt.label}</option>`
       ).join('');
 
       moveDocModal.classList.remove('hidden');
     }
 
+    function openMoveFolderModal(folderId) {
+      const folder = state.folders.find(f => f.id === folderId);
+      if (!folder || folder.id === 'folder-default') return;
+      pendingMoveTarget = { type: 'folder', id: folderId };
+      moveModalTitle.textContent = 'フォルダの移動先を選択';
+      moveDocTargetName.textContent = `対象フォルダ: 📁 ${folder.name}`;
+
+      const excludedIds = new Set(getDescendantFolderIds(folderId));
+      const rootOption = `<option value="__ROOT__" ${(folder.parentId || null) === null ? 'selected' : ''}>🏠 最上層（ブラウズ）</option>`;
+      const subOptions = getFlatFolderOptions(null, 0, excludedIds).map(opt =>
+        `<option value="${opt.id}" ${opt.id === folder.parentId ? 'selected' : ''}>${opt.label}</option>`
+      ).join('');
+
+      moveDestinationSelect.innerHTML = rootOption + subOptions;
+      moveDocModal.classList.remove('hidden');
+    }
+
     document.getElementById('cancelMoveDocBtn').addEventListener('click', () => {
-      pendingMoveDocId = null;
+      pendingMoveTarget = null;
       moveDocModal.classList.add('hidden');
     });
 
     document.getElementById('confirmMoveDocBtn').addEventListener('click', async () => {
-      if (!pendingMoveDocId) return;
-      const targetFolderId = moveDestinationSelect.value || 'folder-default';
-      const docId = pendingMoveDocId;
-      pendingMoveDocId = null;
+      if (!pendingMoveTarget) return;
+      const target = pendingMoveTarget;
+      const selectedValue = moveDestinationSelect.value;
+      pendingMoveTarget = null;
       moveDocModal.classList.add('hidden');
-
-      movingDocIdInFlight = docId;
-      try {
-        await moveDocToFolder(docId, targetFolderId);
-      } finally {
-        movingDocIdInFlight = null;
-      }
 
       activeBottomTab = 'browse';
       searchQuery = '';
       if (searchInput) searchInput.value = '';
       if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
-      currentFolderId = targetFolderId;
 
       document.querySelectorAll('.bottom-tab-btn').forEach(b => {
         if (b.dataset.tab === 'browse') {
@@ -742,8 +761,58 @@
         }
       });
 
+      if (target.type === 'folder') {
+        const nextParentId = (selectedValue === '__ROOT__' || !selectedValue) ? null : selectedValue;
+        movingItemInFlight = { type: 'folder', id: target.id };
+        try {
+          await moveFolderToParent(target.id, nextParentId);
+        } finally {
+          movingItemInFlight = null;
+        }
+        currentFolderId = nextParentId;
+      } else {
+        const targetFolderId = (selectedValue && selectedValue !== '__ROOT__') ? selectedValue : 'folder-default';
+        movingItemInFlight = { type: 'doc', id: target.id };
+        try {
+          await moveDocToFolder(target.id, targetFolderId);
+        } finally {
+          movingItemInFlight = null;
+        }
+        currentFolderId = targetFolderId;
+      }
+
       renderBrowser();
     });
+
+    async function moveFolderToParent(folderId, newParentId) {
+      if (folderId === 'folder-default' || folderId === newParentId) return;
+      if (newParentId && getDescendantFolderIds(folderId).includes(newParentId)) return;
+
+      const siblings = state.folders
+        .filter(f => (f.parentId || null) === (newParentId || null) && f.id !== folderId)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      const newOrder = siblings.length;
+
+      const localFolder = state.folders.find(f => f.id === folderId);
+      if (localFolder) {
+        localFolder.parentId = newParentId || null;
+        localFolder.order = newOrder;
+      }
+
+      try {
+        if (isCloudMode) {
+          await db.collection('rooms').doc(ROOM_ID).collection('folders').doc(folderId).set({
+            parentId: newParentId || null,
+            order: newOrder
+          }, { merge: true });
+        } else {
+          saveState();
+        }
+      } catch (err) {
+        console.error(err);
+        notifyIfQuotaExceeded(err);
+      }
+    }
 
     async function moveDocToFolder(docId, folderId) {
       const normalizedFolderId = folderId || 'folder-default';
@@ -802,16 +871,17 @@
       if (files.length === 0) return;
 
       const targetFolderId = currentFolderId || 'folder-default';
-      const targetDocs = state.documents.filter(d => d.folderId === targetFolderId);
+      const targetDocs = state.documents.filter(d => (d.folderId || 'folder-default') === targetFolderId);
       let nextOrder = targetDocs.length > 0 ? Math.max(...targetDocs.map(d => d.order || 0)) + 1 : 0;
 
       for (const file of files) {
         try {
           const lowerName = file.name.toLowerCase();
+          const mimeType = (file.type || '').toLowerCase();
           let fileType = 'image';
           let dataUrl = '';
 
-          if (lowerName.endsWith('.pdf')) {
+          if (lowerName.endsWith('.pdf') || mimeType === 'application/pdf') {
             fileType = 'pdf';
             dataUrl = await readFileAsDataUrl(file);
           } else if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
@@ -872,16 +942,16 @@
       return ids;
     }
 
-    function getFlatFolderOptions(parentId = null, depth = 0) {
+    function getFlatFolderOptions(parentId = null, depth = 0, excludedIds = new Set()) {
       let options = [];
       const children = state.folders
-        .filter(f => (f.parentId || null) === parentId)
+        .filter(f => (f.parentId || null) === parentId && !excludedIds.has(f.id))
         .sort((a, b) => (a.order || 0) - (b.order || 0));
 
       children.forEach(f => {
         const prefix = depth > 0 ? ' '.repeat(depth) + '└ ' : '';
         options.push({ id: f.id, label: `${prefix}📁 ${f.name}` });
-        options = options.concat(getFlatFolderOptions(f.id, depth + 1));
+        options = options.concat(getFlatFolderOptions(f.id, depth + 1, excludedIds));
       });
       return options;
     }
@@ -913,6 +983,7 @@
       bar.innerHTML = '';
 
       const rootBtn = document.createElement('button');
+      rootBtn.type = 'button';
       rootBtn.className = 'text-blue-600 hover:underline font-medium shrink-0';
       rootBtn.textContent = 'ブラウズ';
       rootBtn.addEventListener('click', () => {
@@ -934,6 +1005,7 @@
           bar.appendChild(curSpan);
         } else {
           const stepBtn = document.createElement('button');
+          stepBtn.type = 'button';
           stepBtn.className = 'text-blue-600 hover:underline font-medium shrink-0';
           stepBtn.textContent = f.name;
           stepBtn.addEventListener('click', () => {
@@ -1031,6 +1103,7 @@
           const childFoldersCount = state.folders.filter(f => f.parentId === folder.id).length;
           const directDocsCount = state.documents.filter(d => d.folderId === folder.id).length;
           const totalItems = childFoldersCount + directDocsCount;
+          const isMovableFolder = folder.id !== 'folder-default';
 
           const row = document.createElement('div');
           row.className = 'px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer';
@@ -1044,19 +1117,30 @@
               </div>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
-              ${folder.id !== 'folder-default' ? `<button class="delete-folder-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50" title="フォルダ削除">削除</button>` : ''}
+              ${isMovableFolder ? `<button type="button" class="move-folder-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 text-[11px] font-semibold transition">移動</button>` : ''}
+              ${isMovableFolder ? `<button type="button" class="delete-folder-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50" title="フォルダ削除">削除</button>` : ''}
               <span class="text-slate-300 font-bold text-base pl-1">›</span>
             </div>
           `;
 
           row.addEventListener('click', (e) => {
-            if (e.target.closest('.delete-folder-btn')) return;
+            if (e.target.closest('.move-folder-btn') || e.target.closest('.delete-folder-btn')) return;
             currentFolderId = folder.id;
             renderBrowser();
           });
 
+          const moveFolderBtn = row.querySelector('.move-folder-btn');
+          if (moveFolderBtn) {
+            moveFolderBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+            moveFolderBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              openMoveFolderModal(folder.id);
+            });
+          }
+
           const delBtn = row.querySelector('.delete-folder-btn');
           if (delBtn) {
+            delBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
             delBtn.addEventListener('click', async (e) => {
               e.stopPropagation();
               const targetFolderIds = getDescendantFolderIds(folder.id);
@@ -1243,7 +1327,6 @@
         const moveBtn = row.querySelector('.move-doc-btn');
         const delBtn = row.querySelector('.delete-doc-btn');
 
-        // ボタン押下時は行の長押し・タップ判定へ伝播させない
         [moveBtn, delBtn].forEach(btn => {
           btn.addEventListener('pointerdown', (e) => e.stopPropagation());
           btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
