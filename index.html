@@ -2,2643 +2,1569 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDF & Image Sync Board - 明るめ階層ブラウズ版</title>
-  <link rel="manifest" href="./manifest.json">
-  <meta name="theme-color" content="#f2f2f7">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="PDF Board">
-  <link rel="apple-touch-icon" href="./icon-512.png">
-
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A4図面ホワイトボード（起動時PWなし・フォルダ管理対応）</title>
   <style>
-    html, body {
-      position: fixed;
-      inset: 0;
-      overflow: hidden;
-      overscroll-behavior: none;
-      user-select: none;
-      -webkit-user-select: none;
-      -webkit-touch-callout: none;
-    }
-    .canvas-container {
-      touch-action: pan-x pan-y;
+    * {
       box-sizing: border-box;
     }
-    .canvas-scroll-inner {
-      display: table;
-      width: 100%;
-      height: 100%;
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      background: #1e232a;
+      color: #f3f6fa;
     }
-    .canvas-scroll-cell {
-      display: table-cell;
-      vertical-align: middle;
+
+    .bar {
+      background: #282f38;
+      border-bottom: 1px solid #3f4a58;
+      padding: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .subbar {
+      background: #323b46;
+      border-bottom: 1px solid #3f4a58;
+      padding: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .folder-badge {
+      background: #1d4ed8;
+      border: 1px solid #93c5fd;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+
+    .stamp-panel {
+      background: #232932;
+      border-bottom: 1px solid #3f4a58;
+      padding: 8px;
+    }
+
+    .stamp-panel.hidden {
+      display: none;
+    }
+
+    .stamp-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .stamp-row:last-child {
+      margin-bottom: 0;
+    }
+
+    button {
+      border: 1px solid #4b5563;
+      background: #374151;
+      color: #ffffff;
+      font-size: 13px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button.active {
+      background: #2563eb;
+      border-color: #93c5fd;
+      font-weight: bold;
+    }
+
+    button.on {
+      background: #059669;
+      border-color: #6ee7b7;
+      font-weight: bold;
+    }
+
+    button.btn-danger {
+      background: #dc2626;
+      border-color: #fca5a5;
+      color: #ffffff;
+      font-weight: bold;
+    }
+
+    button.btn-back {
+      background: #475569;
+      border-color: #94a3b8;
+      color: #ffffff;
+      font-weight: bold;
+    }
+
+    button.btn-print {
+      background: #059669;
+      border-color: #6ee7b7;
+      color: #ffffff;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+    }
+
+    .color-btn {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border-radius: 50%;
+      border: 2px solid #cbd5e1;
+    }
+
+    .color-btn.active {
+      border-color: #ffffff;
+      box-shadow: 0 0 0 2px #3b82f6;
+    }
+
+    .workspace {
+      padding: 12px;
+      overflow: auto;
       text-align: center;
-      padding: 48px;
     }
-    #canvasScaleBox {
+
+    .paper {
       display: inline-block;
-      text-align: left;
-      vertical-align: middle;
+      background: #ffffff;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      line-height: 0;
     }
-    #passwordModal, #saveChoiceModal, #moveDocModal, #moreMenuModal, input, button, select {
-      touch-action: manipulation;
+
+    canvas {
+      display: block;
+      background: #ffffff;
+      touch-action: none;
     }
-    .doc-row-reordering {
-      position: relative;
-      z-index: 25;
-      background-color: #eff6ff !important;
-      box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.25), 0 4px 10px -2px rgba(37, 99, 235, 0.12);
-      transform: scale(1.015);
+
+    .status {
+      background: #181c22;
+      border-top: 1px solid #3f4a58;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #cbd5e1;
     }
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+
+    /* モーダル共通 */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      z-index: 300;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
     }
-    ::-webkit-scrollbar-track {
-      background: transparent;
+
+    .modal-backdrop.open {
+      display: flex;
     }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(100, 116, 139, 0.35);
-      border-radius: 3px;
+
+    .modal-card {
+      width: 100%;
+      max-width: 420px;
+      max-height: 90vh;
+      overflow-y: auto;
+      background: #1f2937;
+      border: 1px solid #4b5563;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
+    }
+
+    .modal-card h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      color: #f9fafb;
+    }
+
+    .section-box {
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .section-box.danger-box {
+      border-color: #991b1b;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: bold;
+      color: #93c5fd;
+      margin-bottom: 8px;
+    }
+
+    .section-title.danger-title {
+      color: #fca5a5;
+    }
+
+    .modal-label {
+      display: block;
+      font-size: 12px;
+      color: #d1d5db;
+      margin-bottom: 5px;
+    }
+
+    .modal-select,
+    .modal-input {
+      width: 100%;
+      padding: 9px 11px;
+      font-size: 14px;
+      border-radius: 8px;
+      border: 1px solid #6b7280;
+      background: #1f2937;
+      color: #ffffff;
+      margin-bottom: 10px;
+    }
+
+    .modal-error {
+      color: #fca5a5;
+      font-size: 12px;
+      min-height: 18px;
+      margin-bottom: 8px;
+    }
+
+    .modal-ok {
+      color: #6ee7b7;
+      font-size: 12px;
+      min-height: 18px;
+      margin-bottom: 8px;
+    }
+
+    .modal-hint {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* 出力プレビュー画面 */
+    .preview-overlay {
+      position: fixed;
+      inset: 0;
+      background: #111827;
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+    }
+
+    .preview-overlay.open {
+      display: flex;
+    }
+
+    .preview-header {
+      background: #1f2937;
+      border-bottom: 1px solid #374151;
+      padding: 10px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .preview-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #f9fafb;
+    }
+
+    .preview-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .preview-body {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .preview-card {
+      width: 100%;
+      max-width: 960px;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 10px;
+      padding: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+    }
+
+    .preview-page-label {
+      font-size: 13px;
+      font-weight: bold;
+      color: #e5e7eb;
+      margin-bottom: 8px;
+    }
+
+    .preview-card img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #ffffff;
+      border-radius: 4px;
+    }
+
+    #print-area {
+      display: none;
+    }
+
+    @media print {
+      body > *:not(#print-area) {
+        display: none !important;
+      }
+      #print-area {
+        display: block !important;
+      }
+      .p-page {
+        page-break-after: always;
+        text-align: center;
+      }
+      .p-page img {
+        max-width: 100%;
+        height: auto;
+      }
     }
   </style>
 </head>
-<body class="bg-[#f2f2f7] text-slate-900 h-screen w-screen overflow-hidden flex flex-col font-sans">
+<body>
+  <div class="bar">
+    <span class="folder-badge" id="folder-badge">📁 現場A</span>
+    <button type="button" id="b-folder">フォルダ切替</button>
+    <button type="button" id="b-manage">フォルダ管理</button>
+    <button type="button" id="b-lock">ロック</button>
 
-  <!-- パスワード認証モーダル -->
-  <div id="passwordModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-md flex items-center justify-center z-50 p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
-      <div class="text-center space-y-1">
-        <span class="text-3xl">🔒</span>
-        <h2 class="font-bold text-lg text-slate-900">パスワード認証</h2>
-        <p class="text-xs text-slate-500">このワークスペースに入るためのパスワードを入力してください</p>
-      </div>
-      <form id="passwordForm" class="space-y-3">
-        <input type="password" id="roomPasswordInput" inputmode="numeric" pattern="[0-9]*" placeholder="パスワードを入力 (数字)" required class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-blue-500 text-center tracking-widest text-lg" />
-        <p id="passwordError" class="text-xs text-red-500 hidden text-center">パスワードが間違っています</p>
-        <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
-          入室する
-        </button>
-      </form>
+    <button type="button" id="t-pen" class="active">ペン</button>
+    <button type="button" id="t-stamp">記号スタンプ</button>
+    <button type="button" id="t-dim">寸法線</button>
+    <button type="button" id="t-eraser">消しゴム</button>
+    <button type="button" id="t-shape" class="on">図形認識: ON</button>
+
+    <button type="button" class="color-btn active" data-c="#111827" style="background:#111827;"></button>
+    <button type="button" class="color-btn" data-c="#dc2626" style="background:#dc2626;"></button>
+    <button type="button" class="color-btn" data-c="#2563eb" style="background:#2563eb;"></button>
+    <button type="button" class="color-btn" data-c="#059669" style="background:#059669;"></button>
+
+    <button type="button" class="w-btn" data-w="1.5">極細</button>
+    <button type="button" class="w-btn active" data-w="2.5">細</button>
+    <button type="button" class="w-btn" data-w="5">中</button>
+    <button type="button" class="w-btn" data-w="8">太</button>
+
+    <button type="button" id="b-undo" disabled>戻す</button>
+    <button type="button" id="b-redo" disabled>やり直し</button>
+    <button type="button" id="b-clear" class="btn-danger">全消去</button>
+  </div>
+
+  <div id="stamp-panel" class="stamp-panel hidden">
+    <div class="stamp-row">
+      <span>区分:</span>
+      <button type="button" class="cat-btn active" data-cat="architectural">建築設備</button>
+      <button type="button" class="cat-btn" data-cat="fire">消防設備</button>
+      <button type="button" class="cat-btn" data-cat="water">水道</button>
+      <button type="button" class="cat-btn" data-cat="electrical">電気</button>
+    </div>
+    <div class="stamp-row" id="stamp-items"></div>
+    <div class="stamp-row">
+      <button type="button" id="b-flip">上下180度反転</button>
+      <button type="button" id="b-add-stamp">+ 記号追加</button>
+      <button type="button" id="b-del-stamp">選択記号を削除</button>
     </div>
   </div>
 
-  <!-- 移動先選択モーダル（ファイル・フォルダ共用） -->
-  <div id="moveDocModal" class="hidden fixed inset-0 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
-      <div class="space-y-1">
-        <h3 id="moveModalTitle" class="font-bold text-base text-slate-900">移動先フォルダを選択</h3>
-        <p id="moveDocTargetName" class="text-xs text-slate-500 truncate"></p>
+  <div class="subbar">
+    <button type="button" id="p-prev" disabled>◀</button>
+    <span id="p-label">1 / 1 ページ</span>
+    <button type="button" id="p-next" disabled>▶</button>
+    <button type="button" id="p-add">+ 新規</button>
+    <button type="button" id="p-dup">複製</button>
+    <button type="button" id="p-del" disabled>削除</button>
+
+    <button type="button" id="z-out">縮小 -</button>
+    <span id="z-label">100%</span>
+    <button type="button" id="z-in">拡大 +</button>
+    <button type="button" id="z-reset">リセット</button>
+
+    <button type="button" id="b-orient">A4横</button>
+    <button type="button" id="b-grid" class="on">方眼: ON</button>
+    <button type="button" id="b-grid-exp" class="on">出力方眼: ON</button>
+
+    <button type="button" id="b-png">PNG保存</button>
+    <button type="button" id="b-pdf">PDF出力</button>
+  </div>
+
+  <div class="workspace" id="workspace">
+    <div class="paper" id="paper">
+      <canvas id="cv"></canvas>
+    </div>
+  </div>
+
+  <div class="status" id="status">起動中...</div>
+
+  <!-- フォルダ選択＆パスワード入力モーダル -->
+  <div id="folder-modal" class="modal-backdrop">
+    <div class="modal-card">
+      <h3>フォルダ選択とパスワード入力</h3>
+      <label class="modal-label" for="folder-select">開くフォルダ</label>
+      <select id="folder-select" class="modal-select"></select>
+
+      <label class="modal-label" for="folder-pw-input">フォルダのパスワード</label>
+      <input
+        type="password"
+        id="folder-pw-input"
+        class="modal-input"
+        placeholder="パスワードを入力"
+        autocomplete="off"
+      />
+      <div class="modal-error" id="folder-pw-error"></div>
+      <div class="modal-hint">
+        サンプル初期PW：現場A＝1111 / 現場B＝2222 / 共有＝3333
       </div>
-      <div class="space-y-1.5">
-        <label for="moveDestinationSelect" class="block text-[11px] font-semibold text-slate-600">移動先</label>
-        <select id="moveDestinationSelect" class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-blue-500"></select>
-      </div>
-      <div class="flex gap-2 pt-1">
-        <button id="cancelMoveDocBtn" type="button" class="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition">
-          キャンセル
-        </button>
-        <button id="confirmMoveDocBtn" type="button" class="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
-          ここに移動
-        </button>
+      <div class="modal-actions">
+        <button type="button" id="folder-cancel">キャンセル</button>
+        <button type="button" id="folder-enter" class="active">開く</button>
       </div>
     </div>
   </div>
 
-  <!-- メニュー（...）モーダル -->
-  <div id="moreMenuModal" class="hidden fixed inset-0 bg-slate-900/35 backdrop-blur-[2px] flex items-start justify-end z-50 pt-16 pr-4">
-    <div class="bg-white border border-slate-200 rounded-2xl w-60 p-2 shadow-2xl space-y-1">
-      <button id="menuAddDocBtn" type="button" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
-        <span>📷</span><span>画像 / PDF / 図面を追加</span>
-      </button>
-      <button id="menuCreateFolderBtn" type="button" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
-        <span>📁</span><span>ここに新規フォルダを作成</span>
-      </button>
-      <button id="menuShareRoomBtn" type="button" class="w-full px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2.5">
-        <span>🔗</span><span>共有用URLをコピー</span>
-      </button>
-      <div class="border-t border-slate-100 my-1"></div>
-      <button id="menuResetLocalBtn" type="button" class="w-full px-3 py-2 rounded-xl text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2.5">
-        <span>🔄</span><span>ローカル保存データを初期化</span>
-      </button>
+  <!-- フォルダ追加・パスワード変更・削除モーダル -->
+  <div id="manage-modal" class="modal-backdrop">
+    <div class="modal-card">
+      <h3>フォルダ管理（追加・PW変更・削除）</h3>
+
+      <div class="section-box">
+        <div class="section-title">＋ 新しいフォルダを追加</div>
+        <label class="modal-label" for="new-folder-name">フォルダ名</label>
+        <input
+          type="text"
+          id="new-folder-name"
+          class="modal-input"
+          placeholder="例: 現場C"
+          autocomplete="off"
+        />
+        <label class="modal-label" for="new-folder-pw">新しいフォルダのパスワード</label>
+        <input
+          type="password"
+          id="new-folder-pw"
+          class="modal-input"
+          placeholder="パスワードを設定"
+          autocomplete="off"
+        />
+        <div class="modal-actions">
+          <button type="button" id="btn-create-folder" class="active">フォルダを追加</button>
+        </div>
+      </div>
+
+      <div class="section-box">
+        <div class="section-title">🔑 フォルダのパスワードを変更</div>
+        <label class="modal-label" for="pw-target-select">対象フォルダ</label>
+        <select id="pw-target-select" class="modal-select"></select>
+
+        <label class="modal-label" for="pw-current-input">現在のパスワード</label>
+        <input
+          type="password"
+          id="pw-current-input"
+          class="modal-input"
+          placeholder="現在のパスワードを入力"
+          autocomplete="off"
+        />
+
+        <label class="modal-label" for="pw-new-input">新しいパスワード</label>
+        <input
+          type="password"
+          id="pw-new-input"
+          class="modal-input"
+          placeholder="新しいパスワードを入力"
+          autocomplete="off"
+        />
+
+        <div class="modal-actions">
+          <button type="button" id="btn-change-pw" class="on">パスワード変更</button>
+        </div>
+      </div>
+
+      <div class="section-box danger-box">
+        <div class="section-title danger-title">🗑️ 不要なフォルダを削除</div>
+        <label class="modal-label" for="del-target-select">削除するフォルダ</label>
+        <select id="del-target-select" class="modal-select"></select>
+
+        <label class="modal-label" for="del-pw-input">削除対象フォルダのパスワード</label>
+        <input
+          type="password"
+          id="del-pw-input"
+          class="modal-input"
+          placeholder="パスワードを入力して確認"
+          autocomplete="off"
+        />
+
+        <div class="modal-hint">
+          ※ フォルダ内のページ・図面データも一緒に削除されます。最後の1フォルダは削除できません。
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="btn-delete-folder" class="btn-danger">フォルダを削除</button>
+        </div>
+      </div>
+
+      <div class="modal-error" id="manage-error"></div>
+      <div class="modal-ok" id="manage-ok"></div>
+
+      <div class="modal-actions">
+        <button type="button" id="manage-close" class="btn-back">閉じる</button>
+      </div>
     </div>
   </div>
 
-  <!-- 明るめ階層ブラウズ画面 -->
-  <div id="appContainer" class="flex-1 flex flex-col overflow-hidden relative bg-[#f2f2f7]">
-    <input type="file" id="localImageInput" class="hidden" multiple accept="image/*,.png,.jpg,.jpeg,.webp,application/pdf,.zwd,.zfd" />
-
-    <!-- 上部ヘッダー＆検索バー -->
-    <header class="bg-[#f2f2f7]/95 backdrop-blur-md border-b border-slate-200/80 px-4 pt-3 pb-2.5 shrink-0 z-20 space-y-2.5">
-      <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2 min-w-0">
-          <button id="browseBackBtn" type="button" class="hidden w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-blue-600 flex items-center justify-center shadow-sm shrink-0" title="上の階層へ戻る">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div class="min-w-0">
-            <h1 id="browseHeaderTitle" class="text-xl font-bold tracking-tight text-slate-900 truncate">ブラウズ</h1>
-            <p class="text-[11px] text-slate-500 flex items-center gap-1.5 truncate">
-              <span id="syncStatusDot" class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-              <span id="syncStatusText">ローカル保存</span>
-              <span>•</span>
-              <span id="roomLabel">Room: default-room</span>
-              <span>•</span>
-              <span id="activeUsersCount" class="font-semibold text-slate-700">1人接続</span>
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button id="quickAddFileBtn" type="button" class="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition flex items-center gap-1">
-            <span>＋</span><span>追加</span>
-          </button>
-          <button id="openMoreMenuBtn" type="button" class="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 text-slate-700 flex items-center justify-center shadow-sm transition" title="メニュー">
-            <span class="font-bold tracking-widest text-xs">•••</span>
-          </button>
-        </div>
+  <!-- 出力プレビュー画面 -->
+  <div id="preview-overlay" class="preview-overlay">
+    <div class="preview-header">
+      <div class="preview-title" id="preview-title">出力プレビュー</div>
+      <div class="preview-actions">
+        <button type="button" id="preview-print" class="btn-print">印刷 / PDF保存</button>
+        <button type="button" id="preview-back" class="btn-back">← 戻る</button>
       </div>
-
-      <!-- 検索バー -->
-      <div class="max-w-3xl mx-auto">
-        <div class="relative flex items-center">
-          <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">🔍</span>
-          <input
-            type="search"
-            id="browseSearchInput"
-            placeholder="図面・フォルダを検索"
-            class="w-full bg-[#e3e3e8]/85 focus:bg-white text-slate-900 placeholder-slate-500 text-sm rounded-xl pl-9 pr-8 py-2 border border-transparent focus:border-blue-400 focus:outline-none transition"
-          />
-          <button id="clearSearchBtn" type="button" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs px-1" title="検索をクリア">✕</button>
-        </div>
-      </div>
-    </header>
-
-    <!-- メインコンテンツ（グループ化リスト） -->
-    <main id="browseScrollArea" class="flex-1 overflow-y-auto px-4 pt-3 pb-28">
-      <div class="max-w-3xl mx-auto space-y-5">
-        <!-- パンくず表示（階層移動中） -->
-        <div id="breadcrumbBar" class="hidden flex items-center gap-1 text-xs text-slate-500 overflow-x-auto pb-0.5"></div>
-
-        <!-- フォルダグループ -->
-        <section id="folderSection" class="space-y-1.5">
-          <div class="px-3 flex items-center justify-between">
-            <h2 class="text-xs font-bold text-slate-500 tracking-wide">フォルダ</h2>
-            <button id="inlineCreateFolderBtn" type="button" class="text-xs font-semibold text-blue-600 hover:text-blue-500">＋ 新規フォルダ</button>
-          </div>
-          <div id="folderGroupList" class="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs"></div>
-        </section>
-
-        <!-- 図面・ファイルグループ -->
-        <section id="docSection" class="space-y-1.5">
-          <div class="px-3 flex items-center justify-between">
-            <h2 id="docSectionTitle" class="text-xs font-bold text-slate-500 tracking-wide">図面・ファイル</h2>
-            <div class="flex items-center gap-2">
-              <button id="sortByNumberBtn" type="button" class="hidden px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-600 text-[11px] font-bold transition">
-                🔢 番号順整列
-              </button>
-              <span id="docCountLabel" class="text-[11px] text-slate-400">0件</span>
-            </div>
-          </div>
-          <p id="reorderHintText" class="hidden px-3 text-[10px] text-slate-400">※ ファイルを長押しすると上下に並び替えできます</p>
-          <div id="docGroupList" class="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs"></div>
-        </section>
-      </div>
-    </main>
-
-    <!-- 下部フローティングタブバー -->
-    <nav class="fixed bottom-4 inset-x-0 flex justify-center px-4 z-30 pointer-events-none">
-      <div class="pointer-events-auto bg-white/90 backdrop-blur-xl border border-slate-200/90 shadow-lg rounded-full px-2 py-1.5 flex items-center gap-1">
-        <button data-tab="recent" type="button" class="bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
-          <span class="text-base leading-none">🕒</span>
-          <span>最近使った項目</span>
-        </button>
-        <button data-tab="browse" type="button" class="bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition">
-          <span class="text-base leading-none">📁</span>
-          <span>ブラウズ</span>
-        </button>
-        <button id="bottomShareBtn" type="button" class="px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition">
-          <span class="text-base leading-none">👥</span>
-          <span>共有</span>
-        </button>
-      </div>
-    </nav>
+    </div>
+    <div class="preview-body" id="preview-body"></div>
   </div>
 
-  <!-- ビューア画面 -->
-  <div id="viewerContainer" class="hidden fixed inset-0 z-40 bg-slate-950 text-slate-100 flex flex-col overflow-hidden"></div>
-
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <div id="print-area"></div>
 
   <script>
-    const APP_PASSWORD = "0909";
+    (function () {
+      const STORAGE_KEY = "a4_board_folder_data_v1";
 
-    const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyDuVRjuskinN49x36sB0TmfxD7NNshTT8",
-      authDomain: "oozora12326-91d3d.firebaseapp.com",
-      projectId: "oozora12326-91d3d",
-      storageBucket: "oozora12326-91d3d.firebasestorage.app",
-      messagingSenderId: "381951638605",
-      appId: "1:381951638605:web:49269c22fbe41397dfb004",
-      measurementId: "G-LL2YZVV52S"
-    };
+      const statusEl = document.getElementById("status");
+      const cv = document.getElementById("cv");
+      const ctx = cv.getContext("2d");
+      const workspace = document.getElementById("workspace");
+      const stampPanel = document.getElementById("stamp-panel");
+      const stampItemsEl = document.getElementById("stamp-items");
+      const previewOverlay = document.getElementById("preview-overlay");
+      const previewBody = document.getElementById("preview-body");
+      const previewTitle = document.getElementById("preview-title");
+      const previewPrintBtn = document.getElementById("preview-print");
 
-    const USER_CLIENT_ID = 'user-' + Math.random().toString(36).substring(2, 9);
+      const folderBadge = document.getElementById("folder-badge");
+      const folderModal = document.getElementById("folder-modal");
+      const folderSelect = document.getElementById("folder-select");
+      const folderPwInput = document.getElementById("folder-pw-input");
+      const folderPwError = document.getElementById("folder-pw-error");
 
-    window.addEventListener('DOMContentLoaded', () => {
-      if (sessionStorage.getItem('auth_passed') === 'true') {
-        document.getElementById('passwordModal').style.display = 'none';
-        initApp();
-      }
-    });
+      const manageModal = document.getElementById("manage-modal");
+      const newFolderNameInput = document.getElementById("new-folder-name");
+      const newFolderPwInput = document.getElementById("new-folder-pw");
+      const pwTargetSelect = document.getElementById("pw-target-select");
+      const pwCurrentInput = document.getElementById("pw-current-input");
+      const pwNewInput = document.getElementById("pw-new-input");
+      const delTargetSelect = document.getElementById("del-target-select");
+      const delPwInput = document.getElementById("del-pw-input");
+      const manageError = document.getElementById("manage-error");
+      const manageOk = document.getElementById("manage-ok");
 
-    document.getElementById('passwordForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const inputVal = document.getElementById('roomPasswordInput').value;
-      if (inputVal === APP_PASSWORD) {
-        sessionStorage.setItem('auth_passed', 'true');
-        document.getElementById('passwordModal').style.display = 'none';
-        initApp();
-      } else {
-        document.getElementById('passwordError').classList.remove('hidden');
-      }
-    });
+      const A4_S = 1240;
+      const A4_L = 1754;
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const ROOM_ID = urlParams.get('room') || 'default-room';
-    document.getElementById('roomLabel').textContent = `Room: ${ROOM_ID}`;
+      const DEFAULT_FOLDERS = [
+        { id: "site_a", name: "現場A", password: "1111" },
+        { id: "site_b", name: "現場B", password: "2222" },
+        { id: "shared", name: "共有", password: "3333" }
+      ];
 
-    let db = null;
-    let isCloudMode = false;
-    let currentStrokeUnsubscribe = null;
-    let resizeHandler = null;
+      let folders = [];
+      const folderPagesMap = {};
+      const folderPageIdxMap = {};
+      const unlockedFolders = {};
+      let currentFolderId = "site_a";
 
-    let currentFolderId = null;
-    let activeBottomTab = 'browse';
-    let searchQuery = '';
-
-    let pendingMoveTarget = null;
-    let movingItemInFlight = null;
-
-    let isLongPressReordering = false;
-    let isReorderingInFlight = false;
-    let suppressNextClick = false;
-
-    let lastQuotaAlertAt = 0;
-
-    function extractLeadingNumber(name = '') {
-      const circleMatch = name.match(/[①-⑳]/);
-      if (circleMatch) {
-        return circleMatch[0].codePointAt(0) - 9311;
-      }
-      const numMatch = name.match(/^\s*0*(\d+)/);
-      if (numMatch) {
-        return parseInt(numMatch[1], 10);
-      }
-      return Number.MAX_SAFE_INTEGER;
-    }
-
-    function navigateBackInBrowse() {
-      if (!currentFolderId) return false;
-      const cur = state.folders.find(f => f.id === currentFolderId);
-      currentFolderId = cur ? (cur.parentId || null) : null;
-      renderBrowser();
-      return true;
-    }
-
-    function attachLeftEdgeSwipeBack(targetEl, onSwipeBack) {
-      if (!targetEl) return;
-      const EDGE_THRESHOLD = 28;
-      const SWIPE_DISTANCE = 70;
-      let tracking = false;
-      let startX = 0;
-      let startY = 0;
-      let triggered = false;
-
-      targetEl.addEventListener('pointerdown', (e) => {
-        if (isLongPressReordering) return;
-        if (e.pointerType === 'mouse' && e.button !== 0) return;
-        if (e.clientX <= EDGE_THRESHOLD) {
-          tracking = true;
-          triggered = false;
-          startX = e.clientX;
-          startY = e.clientY;
-        }
-      }, { passive: true });
-
-      targetEl.addEventListener('pointermove', (e) => {
-        if (!tracking || triggered) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        if (Math.abs(dy) > 45 && dx < 35) {
-          tracking = false;
-          return;
-        }
-        if (dx >= SWIPE_DISTANCE && Math.abs(dx) > Math.abs(dy) * 1.2) {
-          triggered = true;
-          tracking = false;
-          suppressNextClick = true;
-          setTimeout(() => { suppressNextClick = false; }, 180);
-          onSwipeBack();
-        }
-      }, { passive: true });
-
-      const resetTracking = () => {
-        tracking = false;
-        triggered = false;
-      };
-      targetEl.addEventListener('pointerup', resetTracking, { passive: true });
-      targetEl.addEventListener('pointercancel', resetTracking, { passive: true });
-    }
-
-    function showQuotaExceededAlert(message = '許容量を超えています。') {
-      const now = Date.now();
-      if (now - lastQuotaAlertAt < 1500) return;
-      lastQuotaAlertAt = now;
-      alert(message);
-    }
-
-    function notifyIfQuotaExceeded(err, customMessage = '許容量を超えています。') {
-      const code = (err && err.code) ? String(err.code).toLowerCase() : '';
-      const name = (err && err.name) ? String(err.name).toLowerCase() : '';
-      const msg = (err && err.message) ? String(err.message).toLowerCase() : '';
-
-      const isQuotaError =
-        code.includes('resource-exhausted') ||
-        code.includes('invalid-argument') ||
-        name.includes('quotaexceedederror') ||
-        msg.includes('quota') ||
-        msg.includes('exceeds the maximum allowed size') ||
-        msg.includes('too large');
-
-      if (isQuotaError) {
-        showQuotaExceededAlert(customMessage);
-        return true;
-      }
-      return false;
-    }
-
-    function safeSetLocalStorage(key, valueStr) {
-      try {
-        localStorage.setItem(key, valueStr);
-        return true;
-      } catch (err) {
-        console.error('localStorage save error:', err);
-        if (!notifyIfQuotaExceeded(err, '許容量を超えています。ブラウザの保存容量が上限に達しました。')) {
-          showQuotaExceededAlert('許容量を超えています。データを保存できませんでした。');
-        }
-        return false;
-      }
-    }
-
-    function estimateDataUrlBytes(dataUrl) {
-      if (!dataUrl || !dataUrl.includes(',')) return 0;
-      const base64 = dataUrl.split(',')[1];
-      const padding = (base64.match(/=+$/) || [''])[0].length;
-      return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
-    }
-
-    function readFileAsDataUrl(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error('ファイル読み込みに失敗しました'));
-        reader.onload = (event) => resolve(event.target.result);
-        reader.readAsDataURL(file);
-      });
-    }
-
-    async function compressImageToTargetBytes(file, targetBytes = 500 * 1024) {
-      const originalDataUrl = await readFileAsDataUrl(file);
-      const originalBytes = estimateDataUrlBytes(originalDataUrl);
-
-      if (originalBytes > 0 && originalBytes <= targetBytes) {
-        return originalDataUrl;
+      function makeBlankPage() {
+        return { orient: "landscape", els: [], undo: [], redo: [] };
       }
 
-      const img = await new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-        image.onload = () => resolve(image);
-        image.src = originalDataUrl;
-      });
-
-      const maxDims = [1600, 1280, 1024, 800];
-      const qualities = [0.8, 0.65, 0.5, 0.38];
-      let bestDataUrl = originalDataUrl;
-
-      for (const maxDim of maxDims) {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width >= height) {
-            height = Math.max(1, Math.round((height * maxDim) / width));
-            width = maxDim;
-          } else {
-            width = Math.max(1, Math.round((width * maxDim) / height));
-            height = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        for (const q of qualities) {
-          const candidateUrl = canvas.toDataURL('image/jpeg', q);
-          bestDataUrl = candidateUrl;
-          if (estimateDataUrlBytes(candidateUrl) <= targetBytes) {
-            return candidateUrl;
-          }
-        }
-      }
-
-      return bestDataUrl;
-    }
-
-    function initApp() {
-      if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId) {
+      function saveToStorage() {
         try {
-          if (!firebase.apps.length) {
-            firebase.initializeApp(FIREBASE_CONFIG);
-          }
-          db = firebase.firestore();
-          isCloudMode = true;
-          const dot = document.getElementById('syncStatusDot');
-          const txt = document.getElementById('syncStatusText');
-          if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block";
-          if (txt) txt.textContent = "クラウド同期";
-
-          setInterval(updatePresence, 10000);
-          updatePresence();
-        } catch (e) {
-          console.error("Firebase init failed:", e);
-        }
-      }
-      initCloudListeners();
-    }
-
-    async function updatePresence(currentDocId = null, currentPageNum = null) {
-      if (!isCloudMode) return;
-      try {
-        await db.collection('rooms').doc(ROOM_ID).collection('presence').doc(USER_CLIENT_ID).set({
-          lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
-          viewingDoc: currentDocId,
-          page: currentPageNum
-        }, { merge: true });
-      } catch(e) { console.error(e); }
-    }
-
-    const STORAGE_KEY_STATE = 'pdf_sync_board_state_v5';
-    const STORAGE_KEY_ANNOTATIONS = 'pdf_sync_board_annotations_v3';
-    const STORAGE_KEY_RECENT = 'pdf_sync_board_recent_v1';
-
-    const defaultState = {
-      folders: [
-        { id: 'folder-default', name: '未分類・図面一式', parentId: null, order: 0 }
-      ],
-      documents: [
-        {
-          id: 'sample-plan-01',
-          name: 'サンプル平面図_1F.pdf',
-          folderId: 'folder-default',
-          type: 'sample',
-          order: 0,
-          numPages: 2
-        }
-      ]
-    };
-
-    let state = loadState();
-    let annotations = loadAnnotations();
-    let recentDocIds = loadRecentDocs();
-
-    function loadState() {
-      const saved = localStorage.getItem(STORAGE_KEY_STATE);
-      if (saved) {
-        try { return JSON.parse(saved); } catch(e) { console.error(e); }
-      }
-      return defaultState;
-    }
-
-    function saveState() {
-      if (!isCloudMode) {
-        return safeSetLocalStorage(STORAGE_KEY_STATE, JSON.stringify(state));
-      }
-      return true;
-    }
-
-    function loadAnnotations() {
-      const saved = localStorage.getItem(STORAGE_KEY_ANNOTATIONS);
-      if (saved) {
-        try { return JSON.parse(saved); } catch(e) { console.error(e); }
-      }
-      return {};
-    }
-
-    function saveAnnotationsData() {
-      if (!isCloudMode) {
-        return safeSetLocalStorage(STORAGE_KEY_ANNOTATIONS, JSON.stringify(annotations));
-      }
-      return true;
-    }
-
-    function loadRecentDocs() {
-      const saved = localStorage.getItem(STORAGE_KEY_RECENT);
-      if (saved) {
-        try { return JSON.parse(saved); } catch(e) { console.error(e); }
-      }
-      return [];
-    }
-
-    function recordRecentDoc(docId) {
-      recentDocIds = [docId, ...recentDocIds.filter(id => id !== docId)].slice(0, 20);
-      safeSetLocalStorage(STORAGE_KEY_RECENT, JSON.stringify(recentDocIds));
-    }
-
-    function copyShareUrl() {
-      const shareUrl = window.location.origin + window.location.pathname + '?room=' + ROOM_ID;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(shareUrl).then(() => {
-          alert('共有用URLをクリップボードにコピーしました！\n別の端末やブラウザに貼り付けて開いてください。');
-        });
-      } else {
-        prompt('このURLをコピーしてください:', shareUrl);
-      }
-    }
-
-    const moreMenuModal = document.getElementById('moreMenuModal');
-    document.getElementById('openMoreMenuBtn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      moreMenuModal.classList.toggle('hidden');
-    });
-    moreMenuModal.addEventListener('click', (e) => {
-      if (e.target === moreMenuModal) moreMenuModal.classList.add('hidden');
-    });
-
-    document.getElementById('quickAddFileBtn').addEventListener('click', () => {
-      document.getElementById('localImageInput').click();
-    });
-    document.getElementById('menuAddDocBtn').addEventListener('click', () => {
-      moreMenuModal.classList.add('hidden');
-      document.getElementById('localImageInput').click();
-    });
-    document.getElementById('menuCreateFolderBtn').addEventListener('click', () => {
-      moreMenuModal.classList.add('hidden');
-      createFolder(currentFolderId);
-    });
-    document.getElementById('inlineCreateFolderBtn').addEventListener('click', () => {
-      createFolder(currentFolderId);
-    });
-    document.getElementById('menuShareRoomBtn').addEventListener('click', () => {
-      moreMenuModal.classList.add('hidden');
-      copyShareUrl();
-    });
-    document.getElementById('bottomShareBtn').addEventListener('click', copyShareUrl);
-    document.getElementById('menuResetLocalBtn').addEventListener('click', () => {
-      moreMenuModal.classList.add('hidden');
-      if (confirm('ローカルに保存されたデータを初期化しますか？')) {
-        localStorage.removeItem(STORAGE_KEY_STATE);
-        localStorage.removeItem(STORAGE_KEY_ANNOTATIONS);
-        localStorage.removeItem(STORAGE_KEY_RECENT);
-        location.reload();
-      }
-    });
-
-    const searchInput = document.getElementById('browseSearchInput');
-    const clearSearchBtn = document.getElementById('clearSearchBtn');
-    searchInput.addEventListener('input', (e) => {
-      searchQuery = e.target.value.trim().toLowerCase();
-      clearSearchBtn.classList.toggle('hidden', searchQuery.length === 0);
-      renderBrowser();
-    });
-    clearSearchBtn.addEventListener('click', () => {
-      searchInput.value = '';
-      searchQuery = '';
-      clearSearchBtn.classList.add('hidden');
-      renderBrowser();
-    });
-
-    document.querySelectorAll('.bottom-tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        activeBottomTab = btn.dataset.tab;
-        document.querySelectorAll('.bottom-tab-btn').forEach(b => {
-          if (b === btn) {
-            b.className = 'bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition';
-          } else {
-            b.className = 'bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition';
-          }
-        });
-        renderBrowser();
-      });
-    });
-
-    document.getElementById('browseBackBtn').addEventListener('click', () => {
-      navigateBackInBrowse();
-    });
-
-    attachLeftEdgeSwipeBack(document.getElementById('appContainer'), () => {
-      if (activeBottomTab === 'browse' && currentFolderId) {
-        navigateBackInBrowse();
-      }
-    });
-
-    document.getElementById('sortByNumberBtn').addEventListener('click', async () => {
-      if (!currentFolderId || activeBottomTab !== 'browse' || searchQuery) return;
-      const folderDocs = state.documents
-        .filter(d => (d.folderId || 'folder-default') === currentFolderId)
-        .sort((a, b) => {
-          const numA = extractLeadingNumber(a.name);
-          const numB = extractLeadingNumber(b.name);
-          if (numA !== numB) return numA - numB;
-          return a.name.localeCompare(b.name, 'ja');
-        });
-      if (folderDocs.length < 2) return;
-      await saveFolderDocsOrder(currentFolderId, folderDocs);
-      renderBrowser();
-    });
-
-    function initCloudListeners() {
-      if (!isCloudMode) {
-        renderBrowser();
-        return;
+          const payload = {
+            folders: folders,
+            folderPagesMap: folderPagesMap,
+            folderPageIdxMap: folderPageIdxMap
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        } catch (_) {}
       }
 
-      const roomRef = db.collection('rooms').doc(ROOM_ID);
-
-      roomRef.collection('folders').onSnapshot(snap => {
-        const existingDefault = state.folders.find(f => f.id === 'folder-default');
-        let defaultFolder = existingDefault || {
-          id: 'folder-default', name: '未分類・図面一式', parentId: null, order: 0
-        };
-
-        const list = [];
-        snap.forEach(doc => {
-          const d = doc.data();
-          const existingLocalFolder = state.folders.find(item => item.id === doc.id);
-          const resolvedParentId = (movingItemInFlight && movingItemInFlight.type === 'folder' && movingItemInFlight.id === doc.id && existingLocalFolder)
-            ? existingLocalFolder.parentId
-            : (d.parentId || null);
-
-          if (doc.id === 'folder-default') {
-            defaultFolder = {
-              id: 'folder-default',
-              name: d.name || '未分類・図面一式',
-              parentId: resolvedParentId,
-              order: d.order !== undefined ? d.order : 0
-            };
-          } else {
-            list.push({
-              id: doc.id,
-              name: d.name,
-              parentId: resolvedParentId,
-              order: d.order !== undefined ? d.order : 999
-            });
-          }
-        });
-
-        list.push(defaultFolder);
-        list.sort((a, b) => (a.order || 0) - (b.order || 0));
-        state.folders = list;
-        if (!isLongPressReordering && !isReorderingInFlight) renderBrowser();
-      });
-
-      roomRef.collection('documents').onSnapshot(snap => {
-        const docsList = [];
-        snap.forEach(docSnap => {
-          const data = docSnap.data();
-          const existingLocal = state.documents.find(item => item.id === docSnap.id);
-          const mergedDataUrl = data.dataUrl || (existingLocal ? existingLocal.dataUrl : null);
-          const resolvedFolderId = (movingItemInFlight && movingItemInFlight.type === 'doc' && movingItemInFlight.id === docSnap.id && existingLocal)
-            ? existingLocal.folderId
-            : (data.folderId || 'folder-default');
-          const resolvedOrder = (isReorderingInFlight && existingLocal)
-            ? existingLocal.order
-            : (data.order !== undefined ? data.order : 999);
-
-          docsList.push({
-            id: docSnap.id,
-            name: data.name,
-            folderId: resolvedFolderId,
-            type: data.type || 'pdf',
-            dataUrl: mergedDataUrl,
-            order: resolvedOrder,
-            numPages: existingLocal ? (existingLocal.numPages || 1) : 1
-          });
-        });
-        docsList.sort((a, b) => (a.order || 0) - (b.order || 0));
-        state.documents = docsList;
-        if (!isLongPressReordering && !isReorderingInFlight) renderBrowser();
-      });
-
-      roomRef.collection('presence').onSnapshot(snap => {
-        let count = 0;
-        const now = Date.now();
-        snap.forEach(doc => {
-          const data = doc.data();
-          if (data.lastSeen && (now - data.lastSeen.toMillis() < 30000)) {
-            count++;
-          }
-        });
-        const countEl = document.getElementById('activeUsersCount');
-        if (countEl) {
-          countEl.textContent = `${Math.max(1, count)}人接続`;
-        }
-      });
-    }
-
-    async function createFolder(parentId = null) {
-      const promptTitle = parentId
-        ? 'このフォルダ内に作成するサブフォルダ名を入力してください:'
-        : '新しいフォルダ名を入力してください:';
-      const defaultName = parentId ? 'サブフォルダ' : '施工図・電気設備';
-      const name = prompt(promptTitle, defaultName);
-      if (!name || !name.trim()) return;
-
-      const siblings = state.folders.filter(f => (f.parentId || null) === parentId);
-      const newOrder = siblings.length > 0 ? Math.max(...siblings.map(f => f.order || 0)) + 1 : 0;
-
-      try {
-        if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('folders').add({
-            name: name.trim(),
-            parentId: parentId || null,
-            order: newOrder,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        } else {
-          state.folders.push({
-            id: 'folder-' + Date.now(),
-            name: name.trim(),
-            parentId: parentId || null,
-            order: newOrder
-          });
-          saveState();
-          renderBrowser();
-        }
-      } catch (err) {
-        console.error(err);
-        notifyIfQuotaExceeded(err);
-      }
-    }
-
-    const moveDocModal = document.getElementById('moveDocModal');
-    const moveModalTitle = document.getElementById('moveModalTitle');
-    const moveDestinationSelect = document.getElementById('moveDestinationSelect');
-    const moveDocTargetName = document.getElementById('moveDocTargetName');
-
-    function openMoveDocModal(docId) {
-      const doc = state.documents.find(d => d.id === docId);
-      if (!doc) return;
-      pendingMoveTarget = { type: 'doc', id: docId };
-      moveModalTitle.textContent = '移動先フォルダを選択';
-      moveDocTargetName.textContent = `対象ファイル: ${doc.name}`;
-
-      const options = getFlatFolderOptions(null, 0);
-      moveDestinationSelect.innerHTML = options.map(opt =>
-        `<option value="${opt.id}" ${opt.id === (doc.folderId || 'folder-default') ? 'selected' : ''}>${opt.label}</option>`
-      ).join('');
-
-      moveDocModal.classList.remove('hidden');
-    }
-
-    function openMoveFolderModal(folderId) {
-      const folder = state.folders.find(f => f.id === folderId);
-      if (!folder || folder.id === 'folder-default') return;
-      pendingMoveTarget = { type: 'folder', id: folderId };
-      moveModalTitle.textContent = 'フォルダの移動先を選択';
-      moveDocTargetName.textContent = `対象フォルダ: 📁 ${folder.name}`;
-
-      const excludedIds = new Set(getDescendantFolderIds(folderId));
-      const rootOption = `<option value="__ROOT__" ${(folder.parentId || null) === null ? 'selected' : ''}>🏠 最上層（ブラウズ）</option>`;
-      const subOptions = getFlatFolderOptions(null, 0, excludedIds).map(opt =>
-        `<option value="${opt.id}" ${opt.id === folder.parentId ? 'selected' : ''}>${opt.label}</option>`
-      ).join('');
-
-      moveDestinationSelect.innerHTML = rootOption + subOptions;
-      moveDocModal.classList.remove('hidden');
-    }
-
-    document.getElementById('cancelMoveDocBtn').addEventListener('click', () => {
-      pendingMoveTarget = null;
-      moveDocModal.classList.add('hidden');
-    });
-
-    document.getElementById('confirmMoveDocBtn').addEventListener('click', async () => {
-      if (!pendingMoveTarget) return;
-      const target = pendingMoveTarget;
-      const selectedValue = moveDestinationSelect.value;
-      pendingMoveTarget = null;
-      moveDocModal.classList.add('hidden');
-
-      activeBottomTab = 'browse';
-      searchQuery = '';
-      if (searchInput) searchInput.value = '';
-      if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
-
-      document.querySelectorAll('.bottom-tab-btn').forEach(b => {
-        if (b.dataset.tab === 'browse') {
-          b.className = 'bottom-tab-btn active px-5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 flex flex-col items-center gap-0.5 transition';
-        } else {
-          b.className = 'bottom-tab-btn px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 flex flex-col items-center gap-0.5 transition';
-        }
-      });
-
-      if (target.type === 'folder') {
-        const nextParentId = (selectedValue === '__ROOT__' || !selectedValue) ? null : selectedValue;
-        movingItemInFlight = { type: 'folder', id: target.id };
+      function loadFromStorage() {
         try {
-          await moveFolderToParent(target.id, nextParentId);
-        } finally {
-          movingItemInFlight = null;
-        }
-        currentFolderId = nextParentId;
-      } else {
-        const targetFolderId = (selectedValue && selectedValue !== '__ROOT__') ? selectedValue : 'folder-default';
-        movingItemInFlight = { type: 'doc', id: target.id };
-        try {
-          await moveDocToFolder(target.id, targetFolderId);
-        } finally {
-          movingItemInFlight = null;
-        }
-        currentFolderId = targetFolderId;
-      }
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return false;
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed.folders) || parsed.folders.length === 0) return false;
 
-      renderBrowser();
-    });
-
-    async function moveFolderToParent(folderId, newParentId) {
-      if (folderId === 'folder-default' || folderId === newParentId) return;
-      if (newParentId && getDescendantFolderIds(folderId).includes(newParentId)) return;
-
-      const siblings = state.folders
-        .filter(f => (f.parentId || null) === (newParentId || null) && f.id !== folderId)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-      const newOrder = siblings.length;
-
-      const localFolder = state.folders.find(f => f.id === folderId);
-      if (localFolder) {
-        localFolder.parentId = newParentId || null;
-        localFolder.order = newOrder;
-      }
-
-      try {
-        if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('folders').doc(folderId).set({
-            parentId: newParentId || null,
-            order: newOrder
-          }, { merge: true });
-        } else {
-          saveState();
-        }
-      } catch (err) {
-        console.error(err);
-        notifyIfQuotaExceeded(err);
-      }
-    }
-
-    async function moveDocToFolder(docId, folderId) {
-      const normalizedFolderId = folderId || 'folder-default';
-      const docsInTarget = state.documents
-        .filter(d => (d.folderId || 'folder-default') === normalizedFolderId && d.id !== docId)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-      const newOrder = docsInTarget.length;
-
-      const localDoc = state.documents.find(d => d.id === docId);
-      if (localDoc) {
-        localDoc.folderId = normalizedFolderId;
-        localDoc.order = newOrder;
-      }
-
-      try {
-        if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(docId).set({
-            folderId: normalizedFolderId,
-            order: newOrder
-          }, { merge: true });
-        } else {
-          saveState();
-        }
-      } catch (err) {
-        console.error(err);
-        notifyIfQuotaExceeded(err);
-      }
-    }
-
-    async function saveFolderDocsOrder(folderId, orderedDocs) {
-      const normalizedFolderId = folderId || 'folder-default';
-      const orderMap = new Map();
-      orderedDocs.forEach((d, idx) => {
-        d.order = idx;
-        d.folderId = normalizedFolderId;
-        orderMap.set(d.id, idx);
-      });
-
-      state.documents.forEach(item => {
-        if (orderMap.has(item.id)) {
-          item.order = orderMap.get(item.id);
-          item.folderId = normalizedFolderId;
-        }
-      });
-      state.documents.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      isReorderingInFlight = true;
-      try {
-        if (isCloudMode) {
-          const batch = db.batch();
-          orderedDocs.forEach((d, idx) => {
-            const ref = db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id);
-            batch.set(ref, { order: idx, folderId: normalizedFolderId }, { merge: true });
+          folders = parsed.folders;
+          folders.forEach(function (f) {
+            const savedPages = parsed.folderPagesMap && parsed.folderPagesMap[f.id];
+            folderPagesMap[f.id] = Array.isArray(savedPages) && savedPages.length > 0
+              ? savedPages.map(function (pg) {
+                  return {
+                    orient: pg.orient === "portrait" ? "portrait" : "landscape",
+                    els: Array.isArray(pg.els) ? pg.els : [],
+                    undo: Array.isArray(pg.undo) ? pg.undo : [],
+                    redo: Array.isArray(pg.redo) ? pg.redo : []
+                  };
+                })
+              : [makeBlankPage()];
+            const idx = (parsed.folderPageIdxMap && parsed.folderPageIdxMap[f.id]) || 0;
+            folderPageIdxMap[f.id] = Math.max(0, Math.min(idx, folderPagesMap[f.id].length - 1));
           });
-          await batch.commit();
-        } else {
-          saveState();
-        }
-      } catch (err) {
-        console.error(err);
-        notifyIfQuotaExceeded(err);
-      } finally {
-        isReorderingInFlight = false;
-      }
-    }
-
-    document.getElementById('localImageInput').addEventListener('change', async (e) => {
-      const files = Array.from(e.target.files || []);
-      if (files.length === 0) return;
-
-      const targetFolderId = currentFolderId || 'folder-default';
-      const targetDocs = state.documents.filter(d => (d.folderId || 'folder-default') === targetFolderId);
-      let nextOrder = targetDocs.length > 0 ? Math.max(...targetDocs.map(d => d.order || 0)) + 1 : 0;
-
-      for (const file of files) {
-        try {
-          const lowerName = file.name.toLowerCase();
-          const mimeType = (file.type || '').toLowerCase();
-          let fileType = 'image';
-          let dataUrl = '';
-
-          if (lowerName.endsWith('.pdf') || mimeType === 'application/pdf') {
-            fileType = 'pdf';
-            dataUrl = await readFileAsDataUrl(file);
-          } else if (lowerName.endsWith('.zwd') || lowerName.endsWith('.zfd')) {
-            fileType = 'cad';
-            dataUrl = await readFileAsDataUrl(file);
-          } else {
-            fileType = 'image';
-            dataUrl = await compressImageToTargetBytes(file, 500 * 1024);
-          }
-
-          if (isCloudMode && dataUrl.length > 950000) {
-            showQuotaExceededAlert(`許容量を超えています。\n「${file.name}」は1ファイルの保存上限を超えているため追加できません。`);
-            continue;
-          }
-
-          if (isCloudMode) {
-            await db.collection('rooms').doc(ROOM_ID).collection('documents').add({
-              name: file.name,
-              folderId: targetFolderId,
-              type: fileType,
-              dataUrl: dataUrl,
-              order: nextOrder++,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-          } else {
-            const newId = 'doc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-            state.documents.push({
-              id: newId,
-              name: file.name,
-              folderId: targetFolderId,
-              type: fileType,
-              dataUrl: dataUrl,
-              order: nextOrder++,
-              numPages: 1
-            });
-            const savedOk = saveState();
-            if (!savedOk) {
-              state.documents = state.documents.filter(d => d.id !== newId);
-            }
-            renderBrowser();
-          }
-        } catch (err) {
-          console.error('File add failed:', err);
-          if (!notifyIfQuotaExceeded(err, `許容量を超えています。\n「${file.name}」を追加できませんでした。`)) {
-            alert(`「${file.name}」の追加に失敗しました。`);
-          }
-        }
-      }
-      e.target.value = '';
-    });
-
-    function getDescendantFolderIds(folderId) {
-      let ids = [folderId];
-      const children = state.folders.filter(f => f.parentId === folderId);
-      children.forEach(c => {
-        ids = ids.concat(getDescendantFolderIds(c.id));
-      });
-      return ids;
-    }
-
-    function getFlatFolderOptions(parentId = null, depth = 0, excludedIds = new Set()) {
-      let options = [];
-      const children = state.folders
-        .filter(f => (f.parentId || null) === parentId && !excludedIds.has(f.id))
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      children.forEach(f => {
-        const prefix = depth > 0 ? ' '.repeat(depth) + '└ ' : '';
-        options.push({ id: f.id, label: `${prefix}📁 ${f.name}` });
-        options = options.concat(getFlatFolderOptions(f.id, depth + 1, excludedIds));
-      });
-      return options;
-    }
-
-    function getFolderPath(folderId) {
-      const path = [];
-      let curId = folderId;
-      const visited = new Set();
-      while (curId && !visited.has(curId)) {
-        visited.add(curId);
-        const found = state.folders.find(f => f.id === curId);
-        if (!found) break;
-        path.unshift(found);
-        curId = found.parentId || null;
-      }
-      return path;
-    }
-
-    function renderBreadcrumb() {
-      const bar = document.getElementById('breadcrumbBar');
-      if (activeBottomTab !== 'browse' || !currentFolderId) {
-        bar.classList.add('hidden');
-        bar.innerHTML = '';
-        return;
-      }
-
-      bar.classList.remove('hidden');
-      const path = getFolderPath(currentFolderId);
-      bar.innerHTML = '';
-
-      const rootBtn = document.createElement('button');
-      rootBtn.type = 'button';
-      rootBtn.className = 'text-blue-600 hover:underline font-medium shrink-0';
-      rootBtn.textContent = 'ブラウズ';
-      rootBtn.addEventListener('click', () => {
-        currentFolderId = null;
-        renderBrowser();
-      });
-      bar.appendChild(rootBtn);
-
-      path.forEach((f, idx) => {
-        const sep = document.createElement('span');
-        sep.className = 'text-slate-400 shrink-0';
-        sep.textContent = '›';
-        bar.appendChild(sep);
-
-        if (idx === path.length - 1) {
-          const curSpan = document.createElement('span');
-          curSpan.className = 'text-slate-700 font-semibold truncate';
-          curSpan.textContent = f.name;
-          bar.appendChild(curSpan);
-        } else {
-          const stepBtn = document.createElement('button');
-          stepBtn.type = 'button';
-          stepBtn.className = 'text-blue-600 hover:underline font-medium shrink-0';
-          stepBtn.textContent = f.name;
-          stepBtn.addEventListener('click', () => {
-            currentFolderId = f.id;
-            renderBrowser();
-          });
-          bar.appendChild(stepBtn);
-        }
-      });
-    }
-
-    function renderBrowser() {
-      const headerTitle = document.getElementById('browseHeaderTitle');
-      const backBtn = document.getElementById('browseBackBtn');
-      const folderSection = document.getElementById('folderSection');
-      const folderGroupList = document.getElementById('folderGroupList');
-      const docGroupList = document.getElementById('docGroupList');
-      const docSectionTitle = document.getElementById('docSectionTitle');
-      const docCountLabel = document.getElementById('docCountLabel');
-      const reorderHintText = document.getElementById('reorderHintText');
-      const sortByNumberBtn = document.getElementById('sortByNumberBtn');
-
-      renderBreadcrumb();
-
-      if (activeBottomTab === 'recent') {
-        reorderHintText.classList.add('hidden');
-        sortByNumberBtn.classList.add('hidden');
-        headerTitle.textContent = '最近使った項目';
-        backBtn.classList.add('hidden');
-        folderSection.classList.add('hidden');
-        docSectionTitle.textContent = '最近開いた図面';
-
-        let recentDocs = recentDocIds
-          .map(id => state.documents.find(d => d.id === id))
-          .filter(Boolean);
-
-        if (searchQuery) {
-          recentDocs = recentDocs.filter(d => d.name.toLowerCase().includes(searchQuery));
-        }
-
-        docCountLabel.textContent = `${recentDocs.length}件`;
-        renderDocRows(docGroupList, recentDocs, { allowLongPressReorder: false, folderId: null });
-        return;
-      }
-
-      backBtn.classList.toggle('hidden', !currentFolderId);
-      if (currentFolderId) {
-        const curFolder = state.folders.find(f => f.id === currentFolderId);
-        headerTitle.textContent = curFolder ? curFolder.name : 'フォルダ';
-      } else {
-        headerTitle.textContent = 'ブラウズ';
-      }
-
-      let foldersToShow = [];
-      let docsToShow = [];
-      let canReorderInCurrentView = false;
-      let reorderTargetFolderId = null;
-
-      if (searchQuery) {
-        reorderHintText.classList.add('hidden');
-        sortByNumberBtn.classList.add('hidden');
-        folderSection.classList.remove('hidden');
-        foldersToShow = state.folders
-          .filter(f => f.name.toLowerCase().includes(searchQuery))
-          .sort((a, b) => (a.order || 0) - (b.order || 0));
-        docsToShow = state.documents
-          .filter(d => d.name.toLowerCase().includes(searchQuery))
-          .sort((a, b) => (a.order || 0) - (b.order || 0));
-        docSectionTitle.textContent = '検索結果の図面・ファイル';
-      } else {
-        folderSection.classList.remove('hidden');
-        foldersToShow = state.folders
-          .filter(f => (f.parentId || null) === currentFolderId)
-          .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-        if (!currentFolderId) {
-          reorderHintText.classList.add('hidden');
-          sortByNumberBtn.classList.add('hidden');
-          docsToShow = state.documents
-            .filter(d => !d.folderId)
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
-          docSectionTitle.textContent = 'その他のファイル';
-        } else {
-          docsToShow = state.documents
-            .filter(d => (d.folderId || 'folder-default') === currentFolderId)
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
-          docSectionTitle.textContent = '図面・ファイル';
-          canReorderInCurrentView = docsToShow.length > 1;
-          reorderTargetFolderId = currentFolderId;
-          reorderHintText.classList.toggle('hidden', !canReorderInCurrentView);
-          sortByNumberBtn.classList.toggle('hidden', !canReorderInCurrentView);
+          currentFolderId = folders[0].id;
+          return true;
+        } catch (_) {
+          return false;
         }
       }
 
-      folderGroupList.innerHTML = '';
-      if (foldersToShow.length === 0) {
-        folderGroupList.innerHTML = `<div class="px-4 py-4 text-xs text-slate-400 text-center">表示するフォルダがありません</div>`;
-      } else {
-        foldersToShow.forEach(folder => {
-          const childFoldersCount = state.folders.filter(f => f.parentId === folder.id).length;
-          const directDocsCount = state.documents.filter(d => d.folderId === folder.id).length;
-          const totalItems = childFoldersCount + directDocsCount;
-          const isMovableFolder = folder.id !== 'folder-default';
-
-          const row = document.createElement('div');
-          row.className = 'px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer';
-
-          row.innerHTML = `
-            <div class="flex items-center gap-3 min-w-0 flex-1">
-              <span class="text-xl text-sky-500 shrink-0">📁</span>
-              <div class="min-w-0 flex-1">
-                <div class="text-sm font-semibold text-slate-900 truncate">${folder.name}</div>
-                <div class="text-[11px] text-slate-400">${totalItems}項目</div>
-              </div>
-            </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              ${isMovableFolder ? `<button type="button" class="move-folder-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 text-[11px] font-semibold transition">移動</button>` : ''}
-              ${isMovableFolder ? `<button type="button" class="delete-folder-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50" title="フォルダ削除">削除</button>` : ''}
-              <span class="text-slate-300 font-bold text-base pl-1">›</span>
-            </div>
-          `;
-
-          row.addEventListener('click', (e) => {
-            if (suppressNextClick) return;
-            if (e.target.closest('.move-folder-btn') || e.target.closest('.delete-folder-btn')) return;
-            currentFolderId = folder.id;
-            renderBrowser();
-          });
-
-          const moveFolderBtn = row.querySelector('.move-folder-btn');
-          if (moveFolderBtn) {
-            moveFolderBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-            moveFolderBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              openMoveFolderModal(folder.id);
-            });
-          }
-
-          const delBtn = row.querySelector('.delete-folder-btn');
-          if (delBtn) {
-            delBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-            delBtn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              const targetFolderIds = getDescendantFolderIds(folder.id);
-              const targetDocs = state.documents.filter(d => targetFolderIds.includes(d.folderId));
-              if (!confirm(`「${folder.name}」フォルダを削除しますか？\n（中身のファイル ${targetDocs.length}件も削除されます）`)) return;
-
-              if (isCloudMode) {
-                const batch = db.batch();
-                targetDocs.forEach(d => {
-                  batch.delete(db.collection('rooms').doc(ROOM_ID).collection('documents').doc(d.id));
-                });
-                targetFolderIds.forEach(fId => {
-                  if (fId !== 'folder-default') {
-                    batch.delete(db.collection('rooms').doc(ROOM_ID).collection('folders').doc(fId));
-                  }
-                });
-                await batch.commit();
-              } else {
-                state.documents = state.documents.filter(d => !targetFolderIds.includes(d.folderId));
-                state.folders = state.folders.filter(f => !targetFolderIds.includes(f.id));
-                if (currentFolderId && targetFolderIds.includes(currentFolderId)) {
-                  currentFolderId = null;
-                }
-                saveState();
-                renderBrowser();
-              }
-            });
-          }
-
-          folderGroupList.appendChild(row);
+      if (!loadFromStorage()) {
+        folders = DEFAULT_FOLDERS.map(function (f) { return Object.assign({}, f); });
+        folders.forEach(function (f) {
+          folderPagesMap[f.id] = [makeBlankPage()];
+          folderPageIdxMap[f.id] = 0;
         });
+        currentFolderId = folders[0].id;
       }
 
-      docCountLabel.textContent = `${docsToShow.length}件`;
-      renderDocRows(docGroupList, docsToShow, {
-        allowLongPressReorder: canReorderInCurrentView,
-        folderId: reorderTargetFolderId
-      });
-    }
+      // 起動時はパスワード入力なしで最初のフォルダを開ける状態にする
+      unlockedFolders[currentFolderId] = true;
+      folderModal.classList.remove("open");
+      let allowModalCancel = true;
 
-    function attachLongPressReorder(rowEl, doc, container, docsList, folderId) {
-      let longPressTimer = null;
-      let activeDrag = false;
-      let startX = 0;
-      let startY = 0;
-      let currentOrderedDocs = [...docsList];
+      let tool = "pen";
+      let autoShape = true;
+      let color = "#111827";
+      let width = 2.5;
+      let showGrid = true;
+      let exportGrid = true;
+      let zoom = 1.0;
 
-      function clearLongPressTimer() {
-        if (longPressTimer) {
-          clearTimeout(longPressTimer);
-          longPressTimer = null;
-        }
+      let cat = "architectural";
+      let stamps = [
+        { id: "s1", name: "扉", kind: "door", cat: "architectural", flipped: false },
+        { id: "s2", name: "総合盤", kind: "panel", cat: "architectural", flipped: false },
+        { id: "s3", name: "受信機", kind: "receiver", cat: "fire", flipped: false },
+        { id: "s4", name: "感知器(差動)", kind: "diff", cat: "fire", flipped: true },
+        { id: "s5", name: "感知器(定温)", kind: "fixed", cat: "fire", flipped: true },
+        { id: "s6", name: "感知器(特六)", kind: "tokuroku", cat: "fire", flipped: true },
+        { id: "s7", name: "給水栓", kind: "faucet", cat: "water", flipped: false },
+        { id: "s8", name: "止水栓", kind: "valve", cat: "water", flipped: false },
+        { id: "s9", name: "分電盤", kind: "panel", cat: "electrical", flipped: false },
+        { id: "s10", name: "コンセント", kind: "outlet", cat: "electrical", flipped: false },
+        { id: "s11", name: "照明", kind: "light", cat: "electrical", flipped: false }
+      ];
+      let selectedStampId = "s1";
+
+      let drawing = false;
+      let pts = [];
+      let dStart = null;
+      let dCurr = null;
+
+      function currentFolderObj() {
+        return folders.find(function (f) { return f.id === currentFolderId; }) || folders[0];
       }
 
-      function findTargetDocIdAtY(clientY) {
-        const rows = Array.from(container.querySelectorAll('.doc-row-item'));
-        for (const r of rows) {
-          const rect = r.getBoundingClientRect();
-          if (clientY >= rect.top && clientY <= rect.bottom) {
-            return r.dataset.docId;
-          }
-        }
-        if (rows.length > 0) {
-          const firstRect = rows[0].getBoundingClientRect();
-          if (clientY < firstRect.top) return rows[0].dataset.docId;
-          const lastRect = rows[rows.length - 1].getBoundingClientRect();
-          if (clientY > lastRect.bottom) return rows[rows.length - 1].dataset.docId;
-        }
-        return null;
+      function pages() {
+        return folderPagesMap[currentFolderId];
       }
 
-      function onPointerMove(e) {
-        if (!activeDrag) {
-          if (Math.hypot(e.clientX - startX, e.clientY - startY) > 14) {
-            clearLongPressTimer();
-          }
-          return;
-        }
+      function pageIdx() {
+        return folderPageIdxMap[currentFolderId] || 0;
+      }
 
-        e.preventDefault();
-        const targetId = findTargetDocIdAtY(e.clientY);
-        if (!targetId || targetId === doc.id) return;
+      function setPageIdx(nextIdx) {
+        folderPageIdxMap[currentFolderId] = nextIdx;
+        saveToStorage();
+      }
 
-        const fromIdx = currentOrderedDocs.findIndex(d => d.id === doc.id);
-        const toIdx = currentOrderedDocs.findIndex(d => d.id === targetId);
-        if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+      function page() {
+        return pages()[pageIdx()];
+      }
 
-        const [moved] = currentOrderedDocs.splice(fromIdx, 1);
-        currentOrderedDocs.splice(toIdx, 0, moved);
+      function sizeOf(p) {
+        return p.orient === "portrait" ? { w: A4_S, h: A4_L } : { w: A4_L, h: A4_S };
+      }
 
-        const rowMap = new Map();
-        Array.from(container.querySelectorAll('.doc-row-item')).forEach(r => {
-          rowMap.set(r.dataset.docId, r);
+      function updateFolderBadge() {
+        const f = currentFolderObj();
+        folderBadge.textContent = "📁 " + f.name;
+      }
+
+      function openFolderModal(targetId, canCancel) {
+        allowModalCancel = canCancel !== false;
+        document.getElementById("folder-cancel").style.display = allowModalCancel ? "inline-block" : "none";
+        folderSelect.innerHTML = "";
+        folders.forEach(function (f) {
+          const opt = document.createElement("option");
+          opt.value = f.id;
+          opt.textContent = f.name + (unlockedFolders[f.id] ? "（認証済）" : "（要PW）");
+          if (f.id === (targetId || currentFolderId)) opt.selected = true;
+          folderSelect.appendChild(opt);
         });
-        currentOrderedDocs.forEach(itemDoc => {
-          const matchedRow = rowMap.get(itemDoc.id);
-          if (matchedRow) container.appendChild(matchedRow);
-        });
-      }
-
-      async function onPointerUp() {
-        clearLongPressTimer();
-        window.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', onPointerUp);
-        window.removeEventListener('pointercancel', onPointerUp);
-
-        if (!activeDrag) return;
-        activeDrag = false;
-        isLongPressReordering = false;
-        suppressNextClick = true;
-        setTimeout(() => { suppressNextClick = false; }, 160);
-
-        const activeRow = container.querySelector(`.doc-row-item[data-doc-id="${doc.id}"]`);
-        if (activeRow) {
-          activeRow.classList.remove('doc-row-reordering');
-          activeRow.style.touchAction = '';
-        }
-
-        await saveFolderDocsOrder(folderId, currentOrderedDocs);
-        renderBrowser();
-      }
-
-      rowEl.addEventListener('pointerdown', (e) => {
-        if (e.button !== undefined && e.button !== 0) return;
-        if (e.target.closest('.move-doc-btn') || e.target.closest('.delete-doc-btn')) return;
-
-        startX = e.clientX;
-        startY = e.clientY;
-        currentOrderedDocs = [...docsList];
-
-        longPressTimer = setTimeout(() => {
-          activeDrag = true;
-          isLongPressReordering = true;
-          rowEl.classList.add('doc-row-reordering');
-          rowEl.style.touchAction = 'none';
-          if (navigator.vibrate) {
-            try { navigator.vibrate(20); } catch (_) {}
-          }
-        }, 350);
-
-        window.addEventListener('pointermove', onPointerMove, { passive: false });
-        window.addEventListener('pointerup', onPointerUp);
-        window.addEventListener('pointercancel', onPointerUp);
-      });
-    }
-
-    function renderDocRows(container, docsList, options = {}) {
-      const { allowLongPressReorder = false, folderId = null } = options;
-      container.innerHTML = '';
-      if (docsList.length === 0) {
-        container.innerHTML = `<div class="px-4 py-5 text-xs text-slate-400 text-center">ファイルがありません</div>`;
-        return;
-      }
-
-      docsList.forEach(doc => {
-        const folderObj = state.folders.find(f => f.id === doc.folderId);
-        const folderLabel = folderObj ? folderObj.name : '未分類・図面一式';
-
-        let icon = '📄';
-        if (doc.type === 'image') icon = '🖼️';
-        if (doc.type === 'cad') icon = '📐';
-
-        const row = document.createElement('div');
-        row.dataset.docId = doc.id;
-        row.className = 'doc-row-item px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer';
-
-        row.innerHTML = `
-          <div class="flex items-center gap-3 min-w-0 flex-1">
-            <span class="text-xl shrink-0">${icon}</span>
-            <div class="min-w-0 flex-1">
-              <div class="text-sm font-semibold text-slate-900 truncate">${doc.name}</div>
-              <div class="text-[11px] text-slate-400 truncate">📁 ${folderLabel}</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <button type="button" class="move-doc-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 text-[11px] font-semibold transition">
-              移動
-            </button>
-            <button type="button" class="delete-doc-btn px-2 py-1 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50 transition" title="削除">
-              削除
-            </button>
-            <span class="text-slate-300 font-bold text-base pl-0.5">›</span>
-          </div>
-        `;
-
-        const moveBtn = row.querySelector('.move-doc-btn');
-        const delBtn = row.querySelector('.delete-doc-btn');
-
-        [moveBtn, delBtn].forEach(btn => {
-          btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-          btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-        });
-
-        row.addEventListener('click', (e) => {
-          if (suppressNextClick || isLongPressReordering) return;
-          if (e.target.closest('.move-doc-btn') || e.target.closest('.delete-doc-btn')) return;
-          openViewer(doc.id);
-        });
-
-        moveBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openMoveDocModal(doc.id);
-        });
-
-        delBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (!confirm(`「${doc.name}」を削除しますか？`)) return;
-          if (isCloudMode) {
-            await db.collection('rooms').doc(ROOM_ID).collection('documents').doc(doc.id).delete();
-          } else {
-            state.documents = state.documents.filter(d => d.id !== doc.id);
-            saveState();
-            renderBrowser();
-          }
-        });
-
-        if (allowLongPressReorder && folderId) {
-          attachLongPressReorder(row, doc, container, docsList, folderId);
-        }
-
-        container.appendChild(row);
-      });
-    }
-
-    // =========================================================================
-    // ビューア画面
-    // =========================================================================
-    function closeViewer() {
-      if (currentStrokeUnsubscribe) {
-        currentStrokeUnsubscribe();
-        currentStrokeUnsubscribe = null;
-      }
-      if (resizeHandler) {
-        window.removeEventListener('resize', resizeHandler);
-        window.removeEventListener('orientationchange', resizeHandler);
-        resizeHandler = null;
-      }
-      if (isCloudMode) updatePresence(null, null);
-
-      const viewerContainer = document.getElementById('viewerContainer');
-      viewerContainer.classList.add('hidden');
-      viewerContainer.innerHTML = '';
-
-      document.getElementById('appContainer').classList.remove('hidden');
-      renderBrowser();
-    }
-
-    async function openViewer(docId) {
-      const doc = state.documents.find(d => d.id === docId);
-      if (!doc) return;
-
-      recordRecentDoc(doc.id);
-      document.getElementById('appContainer').classList.add('hidden');
-      const viewerContainer = document.getElementById('viewerContainer');
-      viewerContainer.classList.remove('hidden');
-
-      viewerContainer.innerHTML = `
-        <div id="viewerApp" class="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
-          <div id="saveChoiceModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xs w-full p-5 shadow-2xl space-y-3.5">
-              <div class="text-center space-y-1">
-                <span class="text-2xl">💾</span>
-                <h3 class="font-bold text-sm text-white">保存方法の選択</h3>
-                <p id="saveChoiceDesc" class="text-[11px] text-slate-400">どのページを画像として保存しますか？</p>
-              </div>
-              <div class="flex flex-col gap-2">
-                <button id="saveCurrentPageBtn" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition">
-                  このページのみ保存（PNG）
-                </button>
-                <button id="saveAllPagesShareBtn" class="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition">
-                  全ページをまとめて共有・保存
-                </button>
-                <button id="saveAllPagesMergedBtn" class="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition">
-                  全ページを1枚の縦長画像で保存
-                </button>
-                <button id="cancelSaveChoiceBtn" class="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition">
-                  キャンセル
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <header class="h-12 bg-slate-900 border-b border-slate-800 px-2 sm:px-3 flex items-center justify-between shrink-0 z-20 gap-1 overflow-x-auto">
-            <div class="flex items-center gap-1.5 min-w-0 shrink-0">
-              <button id="backToListBtn" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow shrink-0">
-                <span>◀</span><span class="hidden xs:inline">一覧</span>
-              </button>
-              <h2 class="text-xs font-bold text-slate-200 truncate max-w-[90px] sm:max-w-[160px]">📄 ${doc.name}</h2>
-            </div>
-
-            <div class="flex items-center gap-1.5 shrink-0">
-              <button id="exportImageBtn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition shrink-0" title="画像として保存">
-                <span>💾</span><span class="hidden sm:inline">保存</span>
-              </button>
-              <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
-                <button id="prevPageBtn" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold">◀</button>
-                <span id="pageIndicator" class="text-[11px] font-mono text-slate-300 whitespace-nowrap">1/1</span>
-                <button id="nextPageBtn" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold">▶</button>
-              </div>
-              <div class="flex items-center gap-1 bg-slate-950/60 px-1.5 py-1 rounded-lg border border-slate-800">
-                <button id="zoomOutBtn" class="w-6 h-6 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-bold flex items-center justify-center">－</button>
-                <span id="scaleLabel" class="text-[11px] font-bold text-emerald-400 w-9 text-center whitespace-nowrap">60%</span>
-                <button id="zoomInBtn" class="w-6 h-6 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-bold flex items-center justify-center">＋</button>
-              </div>
-            </div>
-          </header>
-
-          <div id="canvasContainer" class="canvas-container flex-1 overflow-auto relative bg-slate-950/90">
-            <div class="canvas-scroll-inner">
-              <div class="canvas-scroll-cell">
-                <div id="canvasScaleBox" class="relative">
-                  <div id="canvasWrapper" class="relative shadow-2xl bg-white" style="transform: scale(0.6); transform-origin: top left;">
-                    <canvas id="pdfCanvas" class="block"></canvas>
-                    <canvas id="drawCanvas" class="absolute inset-0"></canvas>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="floatingToolbar" class="absolute z-30 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-1.5">
-            <button id="undoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="元に戻る">↩️</button>
-            <button id="redoBtn" class="w-8 h-8 rounded-lg text-sm flex items-center justify-center text-slate-300 hover:bg-slate-800" title="やり直し">🔁</button>
-            <div id="tbDivider1" class="bg-slate-700"></div>
-            <button data-tool="pan" class="tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow" title="移動（写真の移動も可能）">✋</button>
-            <button data-tool="pen" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="ペン（連続書き・丸補正）">✏️</button>
-            <button data-tool="marker" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="マーカー">🖍️</button>
-            <button data-tool="rect" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="四角枠">⬜</button>
-            <button data-tool="text" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="テキスト">🔤</button>
-            <button id="addPhotoBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="写真貼り付け">📷</button>
-            <input type="file" id="photoFileInput" accept="image/*" class="hidden" />
-            <button data-tool="eraser" class="tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800" title="消しゴム">🧹</button>
-            <button id="clearAllBtn" class="w-8 h-8 rounded-lg text-base flex items-center justify-center bg-red-600/20 text-red-300 hover:bg-red-600 hover:text-white transition" title="一括クリア">🗑️</button>
-            <div id="tbDivider2" class="bg-slate-700"></div>
-            <input type="color" id="colorPicker" value="#ef4444" class="w-7 h-7 rounded-md cursor-pointer bg-transparent border-0 p-0" title="色選択" />
-            <select id="lineWidthSelect" class="bg-slate-950 text-[10px] text-slate-200 rounded-md px-1 py-1 border border-slate-700 text-center w-8">
-              <option value="1" selected>1</option>
-              <option value="2">2</option>
-              <option value="4">4</option>
-              <option value="8">8</option>
-            </select>
-          </div>
-        </div>
-      `;
-
-      function updateToolbarPosition() {
-        const toolbar = document.getElementById('floatingToolbar');
-        const div1 = document.getElementById('tbDivider1');
-        const div2 = document.getElementById('tbDivider2');
-        if (!toolbar) return;
-
-        const isLandscape = window.innerWidth > window.innerHeight;
-
-        if (isLandscape) {
-          toolbar.className = "absolute right-4 bottom-4 z-30 bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-1.5";
-          if (div1) { div1.className = "w-px h-6 bg-slate-700 mx-0.5"; }
-          if (div2) { div2.className = "w-px h-6 bg-slate-700 mx-0.5"; }
-        } else {
-          toolbar.className = "absolute right-3 top-16 z-30 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl flex flex-col gap-1.5 items-center";
-          if (div1) { div1.className = "w-6 h-px bg-slate-700 my-0.5"; }
-          if (div2) { div2.className = "w-6 h-px bg-slate-700 my-0.5"; }
-        }
-      }
-
-      resizeHandler = updateToolbarPosition;
-      window.addEventListener('resize', resizeHandler);
-      window.addEventListener('orientationchange', resizeHandler);
-      updateToolbarPosition();
-
-      document.getElementById('backToListBtn').addEventListener('click', closeViewer);
-      attachLeftEdgeSwipeBack(document.getElementById('viewerApp'), closeViewer);
-
-      initViewerLogic(doc);
-    }
-
-    async function initViewerLogic(doc) {
-      let currentPage = 1;
-      let currentScale = 0.6;
-      let activeTool = 'pan';
-      let currentColor = '#ef4444';
-      let currentWidth = 1;
-      let pdfDocInstance = null;
-      let redoStack = [];
-      let selectedImageId = null;
-      const loadedImagesCache = {};
-
-      let pendingCloudSyncTimer = null;
-      const pendingCloudStrokes = new Map();
-
-      function flushCloudStrokes() {
-        if (!isCloudMode || pendingCloudStrokes.size === 0) return;
-        const batch = db.batch();
-        pendingCloudStrokes.forEach(({ pageKey, strokeId, payload }) => {
-          const ref = db.collection('rooms').doc(ROOM_ID)
-            .collection('annotations').doc(pageKey)
-            .collection('strokes').doc(strokeId);
-          batch.set(ref, payload);
-        });
-        pendingCloudStrokes.clear();
-        batch.commit().catch(err => {
-          console.error('Batch stroke sync failed:', err);
-          notifyIfQuotaExceeded(err, '許容量を超えています。一部の書き込みを保存できませんでした。');
-        });
-      }
-
-      const pdfCanvas = document.getElementById('pdfCanvas');
-      const drawCanvas = document.getElementById('drawCanvas');
-      const pdfCtx = pdfCanvas.getContext('2d');
-      const wrapper = document.getElementById('canvasWrapper');
-      const scaleBox = document.getElementById('canvasScaleBox');
-      const canvasContainer = document.getElementById('canvasContainer');
-
-      function applyScale(newScale, keepCenter = true) {
-        const prevScrollW = canvasContainer.scrollWidth || 1;
-        const prevScrollH = canvasContainer.scrollHeight || 1;
-        const centerRatioX = (canvasContainer.scrollLeft + canvasContainer.clientWidth / 2) / prevScrollW;
-        const centerRatioY = (canvasContainer.scrollTop + canvasContainer.clientHeight / 2) / prevScrollH;
-
-        currentScale = Math.max(0.1, Math.min(5.0, +newScale.toFixed(3)));
-        wrapper.style.transform = `scale(${currentScale})`;
-
-        if (scaleBox && pdfCanvas.width > 0 && pdfCanvas.height > 0) {
-          scaleBox.style.width = `${Math.round(pdfCanvas.width * currentScale)}px`;
-          scaleBox.style.height = `${Math.round(pdfCanvas.height * currentScale)}px`;
-        }
-        document.getElementById('scaleLabel').textContent = `${Math.round(currentScale * 100)}%`;
-
-        if (keepCenter) {
-          const newScrollW = canvasContainer.scrollWidth;
-          const newScrollH = canvasContainer.scrollHeight;
-          canvasContainer.scrollLeft = Math.max(0, newScrollW * centerRatioX - canvasContainer.clientWidth / 2);
-          canvasContainer.scrollTop = Math.max(0, newScrollH * centerRatioY - canvasContainer.clientHeight / 2);
-        }
-      }
-
-      function centerCanvasScroll() {
-        setTimeout(() => {
-          if (canvasContainer) {
-            const targetX = (canvasContainer.scrollWidth - canvasContainer.clientWidth) / 2;
-            const targetY = (canvasContainer.scrollHeight - canvasContainer.clientHeight) / 2;
-            canvasContainer.scrollLeft = Math.max(0, targetX);
-            canvasContainer.scrollTop = Math.max(0, targetY);
-          }
+        folderPwInput.value = "";
+        folderPwError.textContent = "";
+        folderModal.classList.add("open");
+        setTimeout(function () {
+          try { folderPwInput.focus(); } catch (_) {}
         }, 50);
       }
 
-      let initialPinchDistance = null;
-      let initialPinchScale = currentScale;
-
-      function getTouchDistance(touches) {
-        const dx = touches[0].clientX - touches[1].clientX;
-        const dy = touches[0].clientY - touches[1].clientY;
-        return Math.hypot(dx, dy);
+      function closeFolderModal() {
+        if (!allowModalCancel) return;
+        folderModal.classList.remove("open");
+        folderPwError.textContent = "";
       }
 
-      canvasContainer.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-          initialPinchDistance = getTouchDistance(e.touches);
-          initialPinchScale = currentScale;
+      folderSelect.addEventListener("change", function () {
+        const selId = folderSelect.value;
+        folderPwError.textContent = "";
+        if (unlockedFolders[selId]) {
+          folderPwInput.value = "";
+          folderPwError.textContent = "このフォルダは認証済みです（そのまま「開く」を押せます）";
         }
-      }, { passive: true });
+      });
 
-      canvasContainer.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && initialPinchDistance !== null) {
-          e.preventDefault();
-          const currentDistance = getTouchDistance(e.touches);
-          const ratio = currentDistance / initialPinchDistance;
-          applyScale(initialPinchScale * ratio, true);
-        }
-      }, { passive: false });
+      document.getElementById("b-folder").addEventListener("click", function () {
+        openFolderModal(currentFolderId, true);
+      });
 
-      canvasContainer.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2) {
-          initialPinchDistance = null;
-        }
-      }, { passive: true });
+      document.getElementById("b-lock").addEventListener("click", function () {
+        delete unlockedFolders[currentFolderId];
+        statusEl.textContent = "フォルダ「" + currentFolderObj().name + "」をロックしました";
+        openFolderModal(currentFolderId, false);
+      });
 
-      function subscribePageStrokes(pageKey) {
-        if (currentStrokeUnsubscribe) {
-          currentStrokeUnsubscribe();
-          currentStrokeUnsubscribe = null;
-        }
-        if (!isCloudMode) {
-          drawOverlay();
+      document.getElementById("folder-cancel").addEventListener("click", closeFolderModal);
+
+      document.getElementById("folder-enter").addEventListener("click", function () {
+        const selId = folderSelect.value;
+        const targetFolder = folders.find(function (f) { return f.id === selId; });
+        if (!targetFolder) return;
+
+        const inputPw = folderPwInput.value;
+        if (!unlockedFolders[selId] && inputPw !== targetFolder.password) {
+          folderPwError.textContent = "パスワードが正しくありません。";
           return;
         }
 
-        if (!annotations[pageKey]) annotations[pageKey] = [];
+        unlockedFolders[selId] = true;
+        currentFolderId = selId;
+        folderModal.classList.remove("open");
+        folderPwError.textContent = "";
+        updateFolderBadge();
+        layoutCanvas();
+        syncButtons();
+        statusEl.textContent = "フォルダ「" + targetFolder.name + "」を開きました";
+      });
 
-        const strokesRef = db.collection('rooms').doc(ROOM_ID)
-          .collection('annotations').doc(pageKey)
-          .collection('strokes').orderBy('createdAt', 'asc');
+      folderPwInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          document.getElementById("folder-enter").click();
+        }
+      });
 
-        currentStrokeUnsubscribe = strokesRef.onSnapshot(snap => {
-          snap.docChanges().forEach(change => {
-            const strokeId = change.doc.id;
-            const data = change.doc.data();
+      /* フォルダ追加・パスワード変更・削除モーダル処理 */
+      function refreshFolderSelects(preferredId) {
+        const targetPref = preferredId || currentFolderId;
+        pwTargetSelect.innerHTML = "";
+        delTargetSelect.innerHTML = "";
 
-            if (change.type === 'added') {
-              if (!annotations[pageKey].find(s => s.id === strokeId)) {
-                annotations[pageKey].push({ id: strokeId, ...data });
-              }
-            } else if (change.type === 'modified') {
-              const idx = annotations[pageKey].findIndex(s => s.id === strokeId);
-              if (idx !== -1) annotations[pageKey][idx] = { id: strokeId, ...data };
-            } else if (change.type === 'removed') {
-              annotations[pageKey] = annotations[pageKey].filter(s => s.id !== strokeId);
-            }
-          });
-          drawOverlay();
+        folders.forEach(function (f) {
+          const opt1 = document.createElement("option");
+          opt1.value = f.id;
+          opt1.textContent = f.name;
+          if (f.id === targetPref) opt1.selected = true;
+          pwTargetSelect.appendChild(opt1);
+
+          const opt2 = document.createElement("option");
+          opt2.value = f.id;
+          opt2.textContent = f.name;
+          if (f.id === targetPref) opt2.selected = true;
+          delTargetSelect.appendChild(opt2);
+        });
+
+        document.getElementById("btn-delete-folder").disabled = folders.length <= 1;
+      }
+
+      document.getElementById("b-manage").addEventListener("click", function () {
+        newFolderNameInput.value = "";
+        newFolderPwInput.value = "";
+        pwCurrentInput.value = "";
+        pwNewInput.value = "";
+        delPwInput.value = "";
+        manageError.textContent = "";
+        manageOk.textContent = "";
+        refreshFolderSelects(currentFolderId);
+        manageModal.classList.add("open");
+      });
+
+      document.getElementById("manage-close").addEventListener("click", function () {
+        manageModal.classList.remove("open");
+        updateFolderBadge();
+      });
+
+      document.getElementById("btn-create-folder").addEventListener("click", function () {
+        manageError.textContent = "";
+        manageOk.textContent = "";
+        const name = (newFolderNameInput.value || "").trim();
+        const pw = newFolderPwInput.value || "";
+
+        if (!name) {
+          manageError.textContent = "新しいフォルダ名を入力してください。";
+          return;
+        }
+        if (!pw) {
+          manageError.textContent = "新しいフォルダのパスワードを入力してください。";
+          return;
+        }
+        if (folders.some(function (f) { return f.name === name; })) {
+          manageError.textContent = "同じ名前のフォルダがすでに存在します。";
+          return;
+        }
+
+        const newId = "fld_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+        folders.push({ id: newId, name: name, password: pw });
+        folderPagesMap[newId] = [makeBlankPage()];
+        folderPageIdxMap[newId] = 0;
+        unlockedFolders[newId] = true;
+        currentFolderId = newId;
+
+        saveToStorage();
+        updateFolderBadge();
+        layoutCanvas();
+        syncButtons();
+        refreshFolderSelects(newId);
+
+        newFolderNameInput.value = "";
+        newFolderPwInput.value = "";
+        manageOk.textContent = "フォルダ「" + name + "」を追加し、切り替えました。";
+        statusEl.textContent = "新しいフォルダ「" + name + "」を追加しました";
+      });
+
+      document.getElementById("btn-change-pw").addEventListener("click", function () {
+        manageError.textContent = "";
+        manageOk.textContent = "";
+        const targetId = pwTargetSelect.value;
+        const target = folders.find(function (f) { return f.id === targetId; });
+        if (!target) {
+          manageError.textContent = "対象フォルダが見つかりません。";
+          return;
+        }
+
+        const curPw = pwCurrentInput.value || "";
+        const nextPw = pwNewInput.value || "";
+
+        if (curPw !== target.password) {
+          manageError.textContent = "現在のパスワードが正しくありません。";
+          return;
+        }
+        if (!nextPw) {
+          manageError.textContent = "新しいパスワードを入力してください。";
+          return;
+        }
+
+        target.password = nextPw;
+        if (target.id !== currentFolderId) {
+          delete unlockedFolders[target.id];
+        }
+        saveToStorage();
+
+        pwCurrentInput.value = "";
+        pwNewInput.value = "";
+        manageOk.textContent = "フォルダ「" + target.name + "」のパスワードを変更しました。";
+        statusEl.textContent = "フォルダ「" + target.name + "」のパスワードを変更しました";
+      });
+
+      document.getElementById("btn-delete-folder").addEventListener("click", function () {
+        manageError.textContent = "";
+        manageOk.textContent = "";
+
+        if (folders.length <= 1) {
+          manageError.textContent = "最後の1フォルダは削除できません。";
+          return;
+        }
+
+        const targetId = delTargetSelect.value;
+        const target = folders.find(function (f) { return f.id === targetId; });
+        if (!target) {
+          manageError.textContent = "削除対象フォルダが見つかりません。";
+          return;
+        }
+
+        const inputPw = delPwInput.value || "";
+        if (inputPw !== target.password) {
+          manageError.textContent = "パスワードが正しくないため削除できません。";
+          return;
+        }
+
+        if (!window.confirm("フォルダ「" + target.name + "」とその中の図面データを完全に削除しますか？")) {
+          return;
+        }
+
+        folders = folders.filter(function (f) { return f.id !== targetId; });
+        delete folderPagesMap[targetId];
+        delete folderPageIdxMap[targetId];
+        delete unlockedFolders[targetId];
+
+        if (currentFolderId === targetId) {
+          currentFolderId = folders[0].id;
+          unlockedFolders[currentFolderId] = true;
+        }
+
+        saveToStorage();
+        updateFolderBadge();
+        layoutCanvas();
+        syncButtons();
+        refreshFolderSelects(currentFolderId);
+        delPwInput.value = "";
+
+        manageOk.textContent = "フォルダ「" + target.name + "」を削除しました。";
+        statusEl.textContent = "フォルダ「" + target.name + "」を削除しました（現在: " + currentFolderObj().name + "）";
+      });
+
+      function saveUndo() {
+        const p = page();
+        p.undo.push(JSON.stringify(p.els));
+        p.redo = [];
+        saveToStorage();
+        syncButtons();
+      }
+
+      function syncButtons() {
+        const p = page();
+        const list = pages();
+        const idx = pageIdx();
+        document.getElementById("p-label").textContent = (idx + 1) + " / " + list.length + " ページ";
+        document.getElementById("p-prev").disabled = idx === 0;
+        document.getElementById("p-next").disabled = idx === list.length - 1;
+        document.getElementById("p-del").disabled = list.length <= 1;
+        document.getElementById("b-undo").disabled = p.undo.length === 0;
+        document.getElementById("b-redo").disabled = p.redo.length === 0;
+        document.getElementById("b-orient").textContent = p.orient === "portrait" ? "A4縦" : "A4横";
+        document.getElementById("z-label").textContent = Math.round(zoom * 100) + "%";
+      }
+
+      function layoutCanvas() {
+        const p = page();
+        const sz = sizeOf(p);
+        cv.width = sz.w;
+        cv.height = sz.h;
+
+        const availW = Math.max(200, (workspace.clientWidth || window.innerWidth) - 24);
+        const availH = Math.max(240, (window.innerHeight * 0.65) - 24);
+        const fit = Math.min(availW / sz.w, availH / sz.h);
+        const scale = fit * zoom;
+
+        cv.style.width = Math.round(sz.w * scale) + "px";
+        cv.style.height = Math.round(sz.h * scale) + "px";
+        drawAll();
+      }
+
+      function drawGrid(c, w, h) {
+        c.save();
+        c.strokeStyle = "#e2e8f0";
+        c.lineWidth = 1;
+        c.beginPath();
+        for (let x = 40; x < w; x += 40) {
+          c.moveTo(x, 0);
+          c.lineTo(x, h);
+        }
+        for (let y = 40; y < h; y += 40) {
+          c.moveTo(0, y);
+          c.lineTo(w, y);
+        }
+        c.stroke();
+        c.restore();
+      }
+
+      function drawStampEl(c, el) {
+        c.save();
+        c.strokeStyle = el.color || "#111827";
+        c.fillStyle = "#ffffff";
+        c.lineWidth = 2.5;
+        c.translate(el.x, el.y);
+        if (el.flipped) c.scale(1, -1);
+
+        if (el.kind === "door") {
+          c.beginPath();
+          c.moveTo(-14, 2);
+          c.lineTo(-14, 18);
+          c.moveTo(14, 2);
+          c.lineTo(14, 18);
+          c.moveTo(-14, 10);
+          c.lineTo(-14, -18);
+          c.stroke();
+          c.setLineDash([4, 3]);
+          c.beginPath();
+          c.arc(-14, 10, 28, -Math.PI / 2, 0, false);
+          c.stroke();
+          c.setLineDash([]);
+        } else if (el.kind === "diff") {
+          c.beginPath();
+          c.arc(0, 6, 22, Math.PI, 0, false);
+          c.closePath();
+          c.fill();
+          c.stroke();
+          c.beginPath();
+          c.moveTo(-17, -5);
+          c.lineTo(17, -5);
+          c.stroke();
+        } else if (el.kind === "fixed") {
+          c.beginPath();
+          c.arc(0, 6, 22, Math.PI, 0, false);
+          c.closePath();
+          c.fill();
+          c.stroke();
+          c.beginPath();
+          c.moveTo(0, -16);
+          c.lineTo(0, 6);
+          c.stroke();
+        } else if (el.kind === "tokuroku") {
+          c.beginPath();
+          c.arc(0, 6, 22, Math.PI, 0, false);
+          c.closePath();
+          c.fill();
+          c.stroke();
+        } else {
+          c.fillRect(-26, -18, 52, 36);
+          c.strokeRect(-26, -18, 52, 36);
+          c.beginPath();
+          c.moveTo(-26, -18);
+          c.lineTo(26, 18);
+          c.moveTo(26, -18);
+          c.lineTo(-26, 18);
+          c.stroke();
+        }
+        c.restore();
+
+        c.save();
+        c.fillStyle = el.color || "#111827";
+        c.font = "bold 15px sans-serif";
+        c.textAlign = "center";
+        c.fillText(el.name || "", el.x, el.y + 38);
+        c.restore();
+      }
+
+      function drawDimEl(c, el) {
+        const ang = Math.atan2(el.y2 - el.y1, el.x2 - el.x1);
+        c.save();
+        c.strokeStyle = el.color || "#111827";
+        c.fillStyle = el.color || "#111827";
+        c.lineWidth = 2.5;
+        c.beginPath();
+        c.moveTo(el.x1, el.y1);
+        c.lineTo(el.x2, el.y2);
+        c.stroke();
+
+        [
+          [el.x1, el.y1, ang],
+          [el.x2, el.y2, ang + Math.PI]
+        ].forEach(function (arr) {
+          c.beginPath();
+          c.moveTo(arr[0], arr[1]);
+          c.lineTo(arr[0] + 16 * Math.cos(arr[2] - 0.35), arr[1] + 16 * Math.sin(arr[2] - 0.35));
+          c.lineTo(arr[0] + 16 * Math.cos(arr[2] + 0.35), arr[1] + 16 * Math.sin(arr[2] + 0.35));
+          c.closePath();
+          c.fill();
+        });
+
+        const mx = (el.x1 + el.x2) / 2;
+        const my = (el.y1 + el.y2) / 2;
+        const txt = el.text || "寸法";
+        c.font = "bold 22px sans-serif";
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+        const w = c.measureText(txt).width + 18;
+        c.fillStyle = "#ffffff";
+        c.fillRect(mx - w / 2, my - 16, w, 32);
+        c.strokeRect(mx - w / 2, my - 16, w, 32);
+        c.fillStyle = el.color || "#111827";
+        c.fillText(txt, mx, my);
+        c.restore();
+      }
+
+      function renderPage(p, targetCv, withGrid) {
+        const sz = sizeOf(p);
+        targetCv.width = sz.w;
+        targetCv.height = sz.h;
+        const c = targetCv.getContext("2d");
+        c.fillStyle = "#ffffff";
+        c.fillRect(0, 0, sz.w, sz.h);
+        if (withGrid) drawGrid(c, sz.w, sz.h);
+
+        p.els.forEach(function (el) {
+          c.save();
+          c.strokeStyle = el.color || "#111827";
+          c.lineWidth = el.width || 2.5;
+          c.lineCap = "round";
+          c.lineJoin = "round";
+          if (el.type === "stroke" && el.pts.length > 1) {
+            c.beginPath();
+            c.moveTo(el.pts[0].x, el.pts[0].y);
+            for (let i = 1; i < el.pts.length; i++) c.lineTo(el.pts[i].x, el.pts[i].y);
+            c.stroke();
+          } else if (el.type === "line") {
+            c.beginPath();
+            c.moveTo(el.x1, el.y1);
+            c.lineTo(el.x2, el.y2);
+            c.stroke();
+          } else if (el.type === "rect") {
+            c.strokeRect(el.x, el.y, el.w, el.h);
+          } else if (el.type === "circle") {
+            c.beginPath();
+            c.ellipse(el.cx, el.cy, el.rx, el.ry, 0, 0, Math.PI * 2);
+            c.stroke();
+          } else if (el.type === "dim") {
+            drawDimEl(c, el);
+          } else if (el.type === "stamp") {
+            drawStampEl(c, el);
+          }
+          c.restore();
         });
       }
 
-      function autoFitScale(imgWidth, imgHeight) {
-        const maxW = Math.max(200, canvasContainer.clientWidth - 96);
-        const maxH = Math.max(200, canvasContainer.clientHeight - 96);
-        const scaleX = maxW / imgWidth;
-        const scaleY = maxH / imgHeight;
-        return Math.max(0.1, Math.min(scaleX, scaleY, 1.0));
-      }
-
-      async function getPdfInstance() {
-        if (pdfDocInstance) return pdfDocInstance;
-        let loadingTask;
-        if (doc.dataUrl && doc.dataUrl.startsWith('data:')) {
-          const base64Data = doc.dataUrl.split(',')[1];
-          const binaryString = atob(base64Data);
-          const len = binaryString.length;
-          const bytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          loadingTask = pdfjsLib.getDocument({ data: bytes });
-        } else {
-          loadingTask = pdfjsLib.getDocument(doc.dataUrl);
-        }
-        pdfDocInstance = await loadingTask.promise;
-        doc.numPages = pdfDocInstance.numPages;
-        return pdfDocInstance;
-      }
-
-      async function renderPage() {
-        flushCloudStrokes();
-        const pageKey = `${doc.id}_p${currentPage}`;
-        if (isCloudMode) {
-          updatePresence(doc.id, currentPage);
-        }
-
-        if (doc.type === 'sample') {
-          pdfCanvas.width = 800;
-          pdfCanvas.height = 1100;
-          drawCanvas.width = 800;
-          drawCanvas.height = 1100;
-          pdfCtx.fillStyle = '#ffffff';
-          pdfCtx.fillRect(0, 0, 800, 1100);
-          pdfCtx.strokeStyle = '#334155';
-          pdfCtx.lineWidth = 3;
-          pdfCtx.strokeRect(50, 50, 700, 1000);
-          pdfCtx.fillStyle = '#0f172a';
-          pdfCtx.font = 'bold 24px sans-serif';
-          pdfCtx.fillText(`サンプル建築平面図 - ${currentPage}階`, 80, 100);
-          pdfCtx.strokeRect(100, 160, 280, 240);
-          pdfCtx.strokeRect(380, 160, 320, 240);
-          pdfCtx.fillText('会議室 A', 180, 285);
-          pdfCtx.fillText('執務スペース', 480, 285);
-          document.getElementById('pageIndicator').textContent = `${currentPage}/2`;
-          applyScale(autoFitScale(800, 1100), false);
-          centerCanvasScroll();
-          subscribePageStrokes(pageKey);
-          return;
-        }
-
-        if (doc.type === 'image' || doc.type === 'cad') {
-          const img = new Image();
-          img.onload = () => {
-            pdfCanvas.width = img.width;
-            pdfCanvas.height = img.height;
-            drawCanvas.width = img.width;
-            drawCanvas.height = img.height;
-            pdfCtx.drawImage(img, 0, 0);
-
-            if (doc.type === 'cad') {
-              pdfCtx.fillStyle = 'rgba(15, 23, 42, 0.7)';
-              pdfCtx.fillRect(20, 20, 240, 40);
-              pdfCtx.fillStyle = '#38bdf8';
-              pdfCtx.font = 'bold 16px sans-serif';
-              pdfCtx.fillText('📐 CAD図面レイヤー', 35, 45);
-            }
-
-            applyScale(autoFitScale(img.width, img.height), false);
-            centerCanvasScroll();
-            document.getElementById('pageIndicator').textContent = `1/1`;
-            subscribePageStrokes(pageKey);
-          };
-          img.src = doc.dataUrl;
-          return;
-        }
-
-        if (doc.type === 'pdf') {
-          try {
-            const pdfInstance = await getPdfInstance();
-            const page = await pdfInstance.getPage(currentPage);
-            const viewport = page.getViewport({ scale: 1.5 });
-            pdfCanvas.width = viewport.width;
-            pdfCanvas.height = viewport.height;
-            drawCanvas.width = viewport.width;
-            drawCanvas.height = viewport.height;
-
-            await page.render({ canvasContext: pdfCtx, viewport }).promise;
-            document.getElementById('pageIndicator').textContent = `${currentPage}/${doc.numPages}`;
-
-            applyScale(autoFitScale(viewport.width, viewport.height), false);
-            centerCanvasScroll();
-            subscribePageStrokes(pageKey);
-          } catch (err) {
-            console.error(err);
-            pdfCanvas.width = 600;
-            pdfCanvas.height = 800;
-            drawCanvas.width = 600;
-            drawCanvas.height = 800;
-            pdfCtx.fillStyle = '#1e293b';
-            pdfCtx.fillRect(0, 0, 600, 800);
-            pdfCtx.fillStyle = '#ef4444';
-            pdfCtx.font = '16px sans-serif';
-            pdfCtx.textAlign = 'center';
-            pdfCtx.fillText('PDFの読み込みに失敗しました', 300, 400);
-            applyScale(autoFitScale(600, 800), false);
-            centerCanvasScroll();
-          }
-        }
-      }
-
-      function trySnapToCircle(stroke) {
-        if (stroke.tool !== 'pen' || !stroke.points || stroke.points.length < 14) return stroke;
-        let pts = stroke.points;
-        if (pts.length > 180) {
-          const step = Math.ceil(pts.length / 180);
-          const sampled = [];
-          for (let i = 0; i < pts.length; i += step) sampled.push(pts[i]);
-          sampled.push(pts[pts.length - 1]);
-          pts = sampled;
-        }
-
-        const start = pts[0];
-        const end = pts[pts.length - 1];
-
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (let i = 0; i < pts.length; i++) {
-          const p = pts[i];
-          if (p.x < minX) minX = p.x;
-          if (p.x > maxX) maxX = p.x;
-          if (p.y < minY) minY = p.y;
-          if (p.y > maxY) maxY = p.y;
-        }
-
-        const width = maxX - minX;
-        const height = maxY - minY;
-        const size = Math.max(width, height);
-        if (size < 25) return stroke;
-
-        const aspectRatio = Math.min(width, height) / size;
-        if (aspectRatio < 0.72) return stroke;
-
-        const closeDist = Math.hypot(end.x - start.x, end.y - start.y);
-        if (closeDist > size * 0.25) return stroke;
-
-        const cx = (minX + maxX) / 2;
-        const cy = (minY + maxY) / 2;
-        let sumR = 0;
-        for (let i = 0; i < pts.length; i++) {
-          sumR += Math.hypot(pts[i].x - cx, pts[i].y - cy);
-        }
-        const avgR = sumR / pts.length;
-
-        let maxDev = 0;
-        for (let i = 0; i < pts.length; i++) {
-          const dev = Math.abs(Math.hypot(pts[i].x - cx, pts[i].y - cy) - avgR);
-          if (dev > maxDev) maxDev = dev;
-        }
-
-        if (maxDev < avgR * 0.26) {
-          return {
-            tool: 'circle',
-            color: stroke.color,
-            width: stroke.width,
-            cx: Math.round(cx),
-            cy: Math.round(cy),
-            r: Math.round(avgR)
-          };
-        }
-        return stroke;
-      }
-
-      function renderStrokesToContext(ctx, strokes, showSelection = true) {
-        strokes.forEach(s => {
+      function drawAll() {
+        renderPage(page(), ctx.canvas, showGrid);
+        if (drawing && tool === "pen" && pts.length > 1) {
           ctx.save();
-          if (s.tool === 'image' && s.dataUrl) {
-            const renderPhoto = (imgObj) => {
-              ctx.drawImage(imgObj, s.x, s.y, s.width, s.height);
-              if (showSelection && s.id === selectedImageId) {
-                ctx.strokeStyle = '#38bdf8';
-                ctx.lineWidth = 3;
-                ctx.setLineDash([6, 4]);
-                ctx.strokeRect(s.x, s.y, s.width, s.height);
-              }
-            };
-
-            if (loadedImagesCache[s.id]) {
-              renderPhoto(loadedImagesCache[s.id]);
-            } else {
-              const img = new Image();
-              img.onload = () => {
-                loadedImagesCache[s.id] = img;
-                drawOverlay();
-              };
-              img.src = s.dataUrl;
-            }
-          } else {
-            ctx.strokeStyle = s.color;
-            ctx.fillStyle = s.color;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            if (s.tool === 'pen' || s.tool === 'marker') {
-              ctx.globalAlpha = s.tool === 'marker' ? 0.35 : 1.0;
-              ctx.lineWidth = s.tool === 'marker' ? s.width * 4 : s.width;
-              ctx.beginPath();
-              if (s.points) {
-                s.points.forEach((pt, idx) => idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
-              }
-              ctx.stroke();
-            } else if (s.tool === 'circle') {
-              ctx.lineWidth = s.width;
-              ctx.beginPath();
-              ctx.arc(s.cx, s.cy, s.r, 0, Math.PI * 2);
-              ctx.stroke();
-            } else if (s.tool === 'rect') {
-              ctx.lineWidth = s.width;
-              ctx.strokeRect(s.startX, s.startY, s.endX - s.startX, s.endY - s.startY);
-            } else if (s.tool === 'text') {
-              ctx.font = `bold ${Math.max(16, s.width * 4)}px sans-serif`;
-              ctx.fillText(s.text, s.x, s.y);
-            }
-          }
-          ctx.restore();
-        });
-      }
-
-      function drawOverlay() {
-        const ctx = drawCanvas.getContext('2d');
-        ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-        const key = `${doc.id}_p${currentPage}`;
-        const strokes = annotations[key] || [];
-        renderStrokesToContext(ctx, strokes, true);
-      }
-
-      async function getStrokesForPage(pageNum) {
-        const pageKey = `${doc.id}_p${pageNum}`;
-        if (annotations[pageKey] && annotations[pageKey].length > 0) {
-          return annotations[pageKey];
-        }
-        if (isCloudMode) {
-          try {
-            const snap = await db.collection('rooms').doc(ROOM_ID)
-              .collection('annotations').doc(pageKey)
-              .collection('strokes').orderBy('createdAt', 'asc').get();
-            const list = [];
-            snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-            annotations[pageKey] = list;
-            return list;
-          } catch (e) {
-            console.error(e);
-          }
-        }
-        return annotations[pageKey] || [];
-      }
-
-      async function preloadImagesInStrokes(strokes) {
-        const targets = strokes.filter(s => s.tool === 'image' && s.dataUrl && !loadedImagesCache[s.id]);
-        await Promise.all(targets.map(s => new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            loadedImagesCache[s.id] = img;
-            resolve();
-          };
-          img.onerror = () => resolve();
-          img.src = s.dataUrl;
-        })));
-      }
-
-      function triggerBlobDownload(blob, fileName) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
-      }
-
-      async function renderPageToCanvas(pageNum) {
-        const strokes = await getStrokesForPage(pageNum);
-        await preloadImagesInStrokes(strokes);
-
-        const outCanvas = document.createElement('canvas');
-        const outCtx = outCanvas.getContext('2d');
-
-        if (pageNum === currentPage) {
-          outCanvas.width = pdfCanvas.width;
-          outCanvas.height = pdfCanvas.height;
-          outCtx.drawImage(pdfCanvas, 0, 0);
-          renderStrokesToContext(outCtx, strokes, false);
-          return outCanvas;
-        }
-
-        if (doc.type === 'sample') {
-          outCanvas.width = 800;
-          outCanvas.height = 1100;
-          outCtx.fillStyle = '#ffffff';
-          outCtx.fillRect(0, 0, 800, 1100);
-          outCtx.strokeStyle = '#334155';
-          outCtx.lineWidth = 3;
-          outCtx.strokeRect(50, 50, 700, 1000);
-          outCtx.fillStyle = '#0f172a';
-          outCtx.font = 'bold 24px sans-serif';
-          outCtx.fillText(`サンプル建築平面図 - ${pageNum}階`, 80, 100);
-          outCtx.strokeRect(100, 160, 280, 240);
-          outCtx.strokeRect(380, 160, 320, 240);
-          outCtx.fillText('会議室 A', 180, 285);
-          outCtx.fillText('執務スペース', 480, 285);
-        } else if (doc.type === 'pdf') {
-          const pdfInstance = await getPdfInstance();
-          const page = await pdfInstance.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 1.5 });
-          outCanvas.width = viewport.width;
-          outCanvas.height = viewport.height;
-          await page.render({ canvasContext: outCtx, viewport }).promise;
-        } else {
-          outCanvas.width = pdfCanvas.width;
-          outCanvas.height = pdfCanvas.height;
-          outCtx.drawImage(pdfCanvas, 0, 0);
-        }
-
-        renderStrokesToContext(outCtx, strokes, false);
-        return outCanvas;
-      }
-
-      async function exportSinglePage(pageNum) {
-        const baseName = doc.name.replace(/\.[^/.]+$/, "");
-        const fileName = `${baseName}_p${pageNum}.png`;
-        const canvas = await renderPageToCanvas(pageNum);
-
-        await new Promise((resolve) => {
-          canvas.toBlob((blob) => {
-            if (blob) triggerBlobDownload(blob, fileName);
-            resolve();
-          }, 'image/png');
-        });
-      }
-
-      const saveChoiceModal = document.getElementById('saveChoiceModal');
-      const saveChoiceDesc = document.getElementById('saveChoiceDesc');
-
-      document.getElementById('exportImageBtn').addEventListener('click', () => {
-        flushCloudStrokes();
-        const totalPages = doc.type === 'sample' ? 2 : (doc.numPages || 1);
-        saveChoiceDesc.textContent = `現在 ${currentPage}/${totalPages} ページ目を表示中です。保存方法を選択してください。`;
-        saveChoiceModal.classList.remove('hidden');
-      });
-
-      document.getElementById('cancelSaveChoiceBtn').addEventListener('click', () => {
-        saveChoiceModal.classList.add('hidden');
-      });
-
-      document.getElementById('saveCurrentPageBtn').addEventListener('click', async () => {
-        saveChoiceModal.classList.add('hidden');
-        try {
-          await exportSinglePage(currentPage);
-        } catch (err) {
-          console.error(err);
-          alert('画像の書き出しに失敗しました。');
-        }
-      });
-
-      document.getElementById('saveAllPagesShareBtn').addEventListener('click', async () => {
-        saveChoiceModal.classList.add('hidden');
-        const totalPages = doc.type === 'sample' ? 2 : (doc.numPages || 1);
-        const baseName = doc.name.replace(/\.[^/.]+$/, "");
-
-        try {
-          const files = [];
-          for (let p = 1; p <= totalPages; p++) {
-            const canvas = await renderPageToCanvas(p);
-            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-            if (blob) {
-              files.push(new File([blob], `${baseName}_p${p}.png`, { type: 'image/png' }));
-            }
-          }
-
-          if (files.length > 0 && navigator.canShare && navigator.canShare({ files })) {
-            await navigator.share({
-              files,
-              title: `${baseName}（全${totalPages}ページ）`
-            });
-            return;
-          }
-
-          for (let p = 0; p < files.length; p++) {
-            triggerBlobDownload(files[p], files[p].name);
-            if (p < files.length - 1) {
-              await new Promise(r => setTimeout(r, 500));
-            }
-          }
-          alert(`全 ${totalPages} ページの保存処理を実行しました。`);
-        } catch (err) {
-          if (err && err.name === 'AbortError') return;
-          console.error(err);
-          alert('一括保存中にエラーが発生しました。「1枚の縦長画像で保存」もお試しください。');
-        }
-      });
-
-      document.getElementById('saveAllPagesMergedBtn').addEventListener('click', async () => {
-        saveChoiceModal.classList.add('hidden');
-        const totalPages = doc.type === 'sample' ? 2 : (doc.numPages || 1);
-        const baseName = doc.name.replace(/\.[^/.]+$/, "");
-
-        try {
-          const canvases = [];
-          let maxW = 0;
-          let totalH = 0;
-          const gap = 20;
-
-          for (let p = 1; p <= totalPages; p++) {
-            const c = await renderPageToCanvas(p);
-            canvases.push(c);
-            if (c.width > maxW) maxW = c.width;
-            totalH += c.height;
-          }
-          totalH += gap * Math.max(0, canvases.length - 1);
-
-          const mergedCanvas = document.createElement('canvas');
-          mergedCanvas.width = maxW;
-          mergedCanvas.height = totalH;
-          const mergedCtx = mergedCanvas.getContext('2d');
-          mergedCtx.fillStyle = '#0f172a';
-          mergedCtx.fillRect(0, 0, maxW, totalH);
-
-          let offsetY = 0;
-          canvases.forEach((c) => {
-            const offsetX = Math.floor((maxW - c.width) / 2);
-            mergedCtx.drawImage(c, offsetX, offsetY);
-            offsetY += c.height + gap;
-          });
-
-          await new Promise((resolve) => {
-            mergedCanvas.toBlob((blob) => {
-              if (blob) triggerBlobDownload(blob, `${baseName}_全${totalPages}ページ.png`);
-              resolve();
-            }, 'image/png');
-          });
-        } catch (err) {
-          console.error(err);
-          alert('結合画像の保存に失敗しました。');
-        }
-      });
-
-      function saveAndRedraw(stroke) {
-        const key = `${doc.id}_p${currentPage}`;
-        if (!annotations[key]) annotations[key] = [];
-        redoStack = [];
-
-        const strokeId = 'st-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-        stroke.id = strokeId;
-
-        const payload = { ...stroke, createdAt: Date.now() };
-        const serializedSize = JSON.stringify(payload).length;
-        if (isCloudMode && serializedSize > 950000) {
-          showQuotaExceededAlert('許容量を超えています。このデータはサイズが大きすぎるため保存できません。');
-          return;
-        }
-
-        annotations[key].push(stroke);
-        drawOverlay();
-
-        if (isCloudMode) {
-          pendingCloudStrokes.set(strokeId, { pageKey: key, strokeId, payload });
-          if (pendingCloudSyncTimer) clearTimeout(pendingCloudSyncTimer);
-          pendingCloudSyncTimer = setTimeout(flushCloudStrokes, 250);
-        } else {
-          const ok = saveAnnotationsData();
-          if (!ok) {
-            annotations[key] = annotations[key].filter(s => s.id !== strokeId);
-            drawOverlay();
-          }
-        }
-      }
-
-      function persistStrokeUpdate(stroke) {
-        const key = `${doc.id}_p${currentPage}`;
-        if (isCloudMode) {
-          const payload = { ...stroke, createdAt: stroke.createdAt || Date.now() };
-          pendingCloudStrokes.set(stroke.id, { pageKey: key, strokeId: stroke.id, payload });
-          if (pendingCloudSyncTimer) clearTimeout(pendingCloudSyncTimer);
-          pendingCloudSyncTimer = setTimeout(flushCloudStrokes, 200);
-        } else {
-          saveAnnotationsData();
-        }
-      }
-
-      document.getElementById('clearAllBtn').addEventListener('click', async () => {
-        if (pendingCloudSyncTimer) clearTimeout(pendingCloudSyncTimer);
-        pendingCloudStrokes.clear();
-
-        const key = `${doc.id}_p${currentPage}`;
-        const strokes = annotations[key] || [];
-        if (strokes.length === 0) {
-          alert('消去する書き込みがありません。');
-          return;
-        }
-
-        if (!confirm('本当にこのページのすべての書き込みを削除しますか？\n（この操作は元に戻せません）')) {
-          return;
-        }
-
-        annotations[key] = [];
-        selectedImageId = null;
-        drawOverlay();
-
-        if (isCloudMode) {
-          const batch = db.batch();
-          const strokesRef = db.collection('rooms').doc(ROOM_ID)
-            .collection('annotations').doc(key)
-            .collection('strokes');
-
-          const snap = await strokesRef.get();
-          snap.forEach(d => {
-            batch.delete(d.ref);
-          });
-          await batch.commit();
-        } else {
-          saveAnnotationsData();
-        }
-      });
-
-      document.getElementById('prevPageBtn').addEventListener('click', () => {
-        if (currentPage > 1) { currentPage--; selectedImageId = null; renderPage(); }
-      });
-      document.getElementById('nextPageBtn').addEventListener('click', () => {
-        const max = doc.type === 'sample' ? 2 : (doc.numPages || 1);
-        if (currentPage < max) { currentPage++; selectedImageId = null; renderPage(); }
-      });
-
-      document.getElementById('zoomInBtn').addEventListener('click', () => {
-        applyScale(currentScale + 0.15, true);
-      });
-      document.getElementById('zoomOutBtn').addEventListener('click', () => {
-        applyScale(currentScale - 0.15, true);
-      });
-
-      document.getElementById('undoBtn').addEventListener('click', async () => {
-        flushCloudStrokes();
-        const key = `${doc.id}_p${currentPage}`;
-        const strokes = annotations[key];
-        if (!strokes || strokes.length === 0) return;
-
-        const popped = strokes.pop();
-        if (popped.id === selectedImageId) selectedImageId = null;
-        redoStack.push(popped);
-        drawOverlay();
-
-        if (isCloudMode) {
-          await db.collection('rooms').doc(ROOM_ID)
-            .collection('annotations').doc(key)
-            .collection('strokes').doc(popped.id).delete();
-        } else {
-          saveAnnotationsData();
-        }
-      });
-
-      document.getElementById('redoBtn').addEventListener('click', async () => {
-        const key = `${doc.id}_p${currentPage}`;
-        if (redoStack.length === 0) return;
-        if (!annotations[key]) annotations[key] = [];
-
-        const restored = redoStack.pop();
-        annotations[key].push(restored);
-        drawOverlay();
-
-        try {
-          if (isCloudMode) {
-            const payload = { ...restored, createdAt: Date.now() };
-            await db.collection('rooms').doc(ROOM_ID)
-              .collection('annotations').doc(key)
-              .collection('strokes').doc(restored.id).set(payload);
-          } else {
-            saveAnnotationsData();
-          }
-        } catch (err) {
-          console.error(err);
-          notifyIfQuotaExceeded(err);
-        }
-      });
-
-      document.getElementById('addPhotoBtn').addEventListener('click', () => document.getElementById('photoFileInput').click());
-      document.getElementById('photoFileInput').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          const dataUrl = await compressImageToTargetBytes(file, 500 * 1024);
-          const img = new Image();
-          img.onload = () => {
-            const maxW = 220;
-            const aspect = img.height / (img.width || 1);
-            saveAndRedraw({
-              tool: 'image',
-              dataUrl: dataUrl,
-              x: 100,
-              y: 120,
-              width: maxW,
-              height: Math.round(maxW * aspect)
-            });
-            const panBtn = document.querySelector('.tool-btn[data-tool="pan"]');
-            if (panBtn) panBtn.click();
-          };
-          img.src = dataUrl;
-        } catch (err) {
-          console.error(err);
-          if (!notifyIfQuotaExceeded(err)) {
-            alert('写真の読み込みに失敗しました。');
-          }
-        }
-        e.target.value = '';
-      });
-
-      document.querySelectorAll('.tool-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          activeTool = btn.dataset.tool;
-          if (activeTool !== 'pan') {
-            selectedImageId = null;
-            drawOverlay();
-          }
-          document.querySelectorAll('.tool-btn').forEach(b => {
-            b.className = b === btn
-              ? 'tool-btn active w-8 h-8 rounded-lg text-base flex items-center justify-center bg-blue-600 text-white shadow'
-              : 'tool-btn w-8 h-8 rounded-lg text-base flex items-center justify-center text-slate-300 hover:bg-slate-800';
-          });
-          updateTouchAction();
-        });
-      });
-
-      function updateTouchAction() {
-        drawCanvas.style.touchAction = 'none';
-        drawCanvas.style.pointerEvents = 'auto';
-        drawCanvas.style.cursor = activeTool === 'pan' ? 'grab' : 'crosshair';
-      }
-      updateTouchAction();
-
-      document.getElementById('colorPicker').addEventListener('input', e => currentColor = e.target.value);
-      document.getElementById('lineWidthSelect').addEventListener('change', e => currentWidth = parseInt(e.target.value));
-
-      let isDrawing = false;
-      let currentStroke = null;
-      let activePointerId = null;
-      let draggingImage = null;
-      let imageOffset = { x: 0, y: 0 };
-      let isPanningScroll = false;
-      let panStartClient = { x: 0, y: 0 };
-      let panStartScroll = { left: 0, top: 0 };
-
-      function findImageAtPos(pos) {
-        const key = `${doc.id}_p${currentPage}`;
-        const strokes = annotations[key] || [];
-        for (let i = strokes.length - 1; i >= 0; i--) {
-          const s = strokes[i];
-          if (
-            s.tool === 'image' &&
-            pos.x >= s.x &&
-            pos.x <= s.x + s.width &&
-            pos.y >= s.y &&
-            pos.y <= s.y + s.height
-          ) {
-            return s;
-          }
-        }
-        return null;
-      }
-
-      drawCanvas.addEventListener('pointerdown', (e) => {
-        if (isDrawing && currentStroke) {
-          const prevStroke = currentStroke;
-          isDrawing = false;
-          currentStroke = null;
-          saveAndRedraw(trySnapToCircle(prevStroke));
-        }
-
-        if (activePointerId !== null && activePointerId !== e.pointerId) {
-          try { drawCanvas.releasePointerCapture(activePointerId); } catch (_) {}
-        }
-        activePointerId = e.pointerId;
-
-        const rect = drawCanvas.getBoundingClientRect();
-        const pos = {
-          x: (e.clientX - rect.left) / currentScale,
-          y: (e.clientY - rect.top) / currentScale
-        };
-
-        if (activeTool === 'pan') {
-          const hitImg = findImageAtPos(pos);
-          if (hitImg) {
-            e.preventDefault();
-            try { drawCanvas.setPointerCapture(e.pointerId); } catch (_) {}
-            draggingImage = hitImg;
-            selectedImageId = hitImg.id;
-            imageOffset = {
-              x: pos.x - hitImg.x,
-              y: pos.y - hitImg.y
-            };
-            drawOverlay();
-            return;
-          }
-
-          selectedImageId = null;
-          drawOverlay();
-          isPanningScroll = true;
-          try { drawCanvas.setPointerCapture(e.pointerId); } catch (_) {}
-          panStartClient = { x: e.clientX, y: e.clientY };
-          panStartScroll = { left: canvasContainer.scrollLeft, top: canvasContainer.scrollTop };
-          return;
-        }
-
-        e.preventDefault();
-        try { drawCanvas.setPointerCapture(e.pointerId); } catch (_) {}
-
-        const intPos = {
-          x: Math.round(pos.x),
-          y: Math.round(pos.y)
-        };
-
-        if (activeTool === 'text') {
-          activePointerId = null;
-          const text = prompt('テキストを入力:');
-          if (text && text.trim()) {
-            saveAndRedraw({ tool: 'text', color: currentColor, width: currentWidth, x: intPos.x, y: intPos.y, text: text.trim() });
-          }
-          return;
-        }
-
-        if (activeTool === 'eraser') {
-          activePointerId = null;
-          const key = `${doc.id}_p${currentPage}`;
-          const strokes = annotations[key] || [];
-          let targetId = null;
-          strokes.forEach(s => {
-            if (s.points && s.points.some(pt => Math.hypot(pt.x - intPos.x, pt.y - intPos.y) < 25)) targetId = s.id;
-            else if (s.tool === 'circle' && Math.abs(Math.hypot(intPos.x - s.cx, intPos.y - s.cy) - s.r) < 25) targetId = s.id;
-            else if (s.tool === 'image' && intPos.x >= s.x && intPos.x <= s.x + s.width && intPos.y >= s.y && intPos.y <= s.y + s.height) targetId = s.id;
-          });
-          if (targetId) {
-            if (targetId === selectedImageId) selectedImageId = null;
-            annotations[key] = annotations[key].filter(s => s.id !== targetId);
-            drawOverlay();
-            if (isCloudMode) {
-              db.collection('rooms').doc(ROOM_ID)
-                .collection('annotations').doc(key)
-                .collection('strokes').doc(targetId).delete()
-                .catch(err => console.error('Delete failed:', err));
-            } else {
-              saveAnnotationsData();
-            }
-          }
-          return;
-        }
-
-        isDrawing = true;
-        currentStroke = {
-          tool: activeTool,
-          color: currentColor,
-          width: currentWidth,
-          points: [intPos],
-          startX: intPos.x,
-          startY: intPos.y,
-          endX: intPos.x,
-          endY: intPos.y
-        };
-      });
-
-      drawCanvas.addEventListener('pointermove', (e) => {
-        if (activePointerId !== null && e.pointerId !== activePointerId) return;
-
-        if (draggingImage) {
-          e.preventDefault();
-          const rect = drawCanvas.getBoundingClientRect();
-          const posX = (e.clientX - rect.left) / currentScale;
-          const posY = (e.clientY - rect.top) / currentScale;
-          draggingImage.x = Math.round(posX - imageOffset.x);
-          draggingImage.y = Math.round(posY - imageOffset.y);
-          drawOverlay();
-          return;
-        }
-
-        if (isPanningScroll) {
-          e.preventDefault();
-          const dx = e.clientX - panStartClient.x;
-          const dy = e.clientY - panStartClient.y;
-          canvasContainer.scrollLeft = panStartScroll.left - dx;
-          canvasContainer.scrollTop = panStartScroll.top - dy;
-          return;
-        }
-
-        if (activeTool === 'pan' || !isDrawing || !currentStroke) return;
-        e.preventDefault();
-
-        const rect = drawCanvas.getBoundingClientRect();
-        const pos = {
-          x: Math.round((e.clientX - rect.left) / currentScale),
-          y: Math.round((e.clientY - rect.top) / currentScale)
-        };
-
-        if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
-          const lastPt = currentStroke.points[currentStroke.points.length - 1];
-          if (!lastPt || Math.hypot(pos.x - lastPt.x, pos.y - lastPt.y) >= 1) {
-            currentStroke.points.push(pos);
-          }
-        } else if (currentStroke.tool === 'rect') {
-          currentStroke.endX = pos.x;
-          currentStroke.endY = pos.y;
-        }
-
-        drawOverlay();
-        const ctx = drawCanvas.getContext('2d');
-        ctx.save();
-        ctx.strokeStyle = currentStroke.color;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        if (currentStroke.tool === 'pen' || currentStroke.tool === 'marker') {
-          ctx.globalAlpha = currentStroke.tool === 'marker' ? 0.35 : 1.0;
-          ctx.lineWidth = currentStroke.tool === 'marker' ? currentStroke.width * 4 : currentStroke.width;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.lineCap = "round";
           ctx.beginPath();
-          currentStroke.points.forEach((pt, idx) => idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
           ctx.stroke();
-        } else if (currentStroke.tool === 'rect') {
-          ctx.lineWidth = currentStroke.width;
-          ctx.strokeRect(currentStroke.startX, currentStroke.startY, currentStroke.endX - currentStroke.startX, currentStroke.endY - currentStroke.startY);
+          ctx.restore();
         }
-        ctx.restore();
-      });
-
-      function finishPointerInteraction(pointerId) {
-        if (pointerId !== undefined && drawCanvas.hasPointerCapture(pointerId)) {
-          try { drawCanvas.releasePointerCapture(pointerId); } catch (_) {}
+        if (drawing && tool === "dim" && dStart && dCurr) {
+          drawDimEl(ctx, { x1: dStart.x, y1: dStart.y, x2: dCurr.x, y2: dCurr.y, text: "...", color: color });
         }
-        if (activePointerId === pointerId || pointerId === undefined) {
-          activePointerId = null;
-        }
-
-        if (draggingImage) {
-          const movedImg = draggingImage;
-          draggingImage = null;
-          persistStrokeUpdate(movedImg);
-          return;
-        }
-
-        if (isPanningScroll) {
-          isPanningScroll = false;
-          return;
-        }
-
-        if (activeTool === 'pan' || !isDrawing || !currentStroke) return;
-        isDrawing = false;
-        const strokeToSave = currentStroke;
-        currentStroke = null;
-
-        const finalStroke = trySnapToCircle(strokeToSave);
-        saveAndRedraw(finalStroke);
       }
 
-      drawCanvas.addEventListener('pointerup', (e) => {
-        finishPointerInteraction(e.pointerId);
+      function toCanvasPt(clientX, clientY) {
+        const r = cv.getBoundingClientRect();
+        return {
+          x: ((clientX - r.left) / (r.width || 1)) * cv.width,
+          y: ((clientY - r.top) / (r.height || 1)) * cv.height
+        };
+      }
+
+      function makeShape(points) {
+        if (!autoShape || points.length < 6) {
+          return { type: "stroke", pts: points, color: color, width: width };
+        }
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        points.forEach(function (pt) {
+          if (pt.x < minX) minX = pt.x;
+          if (pt.y < minY) minY = pt.y;
+          if (pt.x > maxX) maxX = pt.x;
+          if (pt.y > maxY) maxY = pt.y;
+        });
+        const w = maxX - minX;
+        const h = maxY - minY;
+        const first = points[0];
+        const last = points[points.length - 1];
+        const closed = Math.hypot(last.x - first.x, last.y - first.y) < 50 && w > 35 && h > 35;
+        if (closed) {
+          let area = 0;
+          for (let i = 0; i < points.length; i++) {
+            const j = (i + 1) % points.length;
+            area += points[i].x * points[j].y - points[j].x * points[i].y;
+          }
+          const ratio = (Math.abs(area) / 2) / Math.max(1, w * h);
+          if (ratio < 0.85) {
+            return { type: "circle", cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, rx: w / 2, ry: h / 2, color: color, width: width };
+          }
+          return { type: "rect", x: minX, y: minY, w: w, h: h, color: color, width: width };
+        }
+        return { type: "stroke", pts: points, color: color, width: width };
+      }
+
+      cv.addEventListener("pointerdown", function (e) {
+        const pt = toCanvasPt(e.clientX, e.clientY);
+        if (tool === "stamp") {
+          const list = stamps.filter(function (s) { return s.cat === cat; });
+          const st = list.find(function (s) { return s.id === selectedStampId; }) || list[0];
+          if (!st) return;
+          saveUndo();
+          page().els.push({
+            type: "stamp",
+            x: pt.x,
+            y: pt.y,
+            name: st.name,
+            kind: st.kind,
+            flipped: !!st.flipped,
+            color: color
+          });
+          saveToStorage();
+          drawAll();
+          statusEl.textContent = "記号「" + st.name + "」を配置しました";
+          return;
+        }
+        if (tool === "eraser") {
+          saveUndo();
+          page().els = page().els.filter(function (el) {
+            const ex = el.x !== undefined ? el.x : (el.cx !== undefined ? el.cx : el.x1);
+            const ey = el.y !== undefined ? el.y : (el.cy !== undefined ? el.cy : el.y1);
+            if (ex === undefined || ey === undefined) return true;
+            return Math.hypot(pt.x - ex, pt.y - ey) > 45;
+          });
+          saveToStorage();
+          drawAll();
+          statusEl.textContent = "付近の要素を消去しました";
+          return;
+        }
+        drawing = true;
+        if (tool === "dim") {
+          dStart = pt;
+          dCurr = pt;
+        } else {
+          pts = [pt];
+        }
       });
 
-      drawCanvas.addEventListener('pointercancel', (e) => {
-        finishPointerInteraction(e.pointerId);
+      cv.addEventListener("pointermove", function (e) {
+        if (!drawing) return;
+        const pt = toCanvasPt(e.clientX, e.clientY);
+        if (tool === "dim") {
+          dCurr = pt;
+        } else {
+          pts.push(pt);
+        }
+        drawAll();
       });
 
-      renderPage();
-    }
+      window.addEventListener("pointerup", function () {
+        if (!drawing) return;
+        drawing = false;
+        if (tool === "dim" && dStart && dCurr) {
+          if (Math.hypot(dCurr.x - dStart.x, dCurr.y - dStart.y) > 25) {
+            const val = window.prompt("寸法数値を入力してください（例: 1200mm）", "1200mm");
+            if (val !== null) {
+              saveUndo();
+              page().els.push({
+                type: "dim",
+                x1: dStart.x,
+                y1: dStart.y,
+                x2: dCurr.x,
+                y2: dCurr.y,
+                text: val.trim() || "寸法",
+                color: color
+              });
+              saveToStorage();
+            }
+          }
+          dStart = null;
+          dCurr = null;
+          drawAll();
+          return;
+        }
+        if (tool === "pen" && pts.length > 0) {
+          saveUndo();
+          page().els.push(makeShape(pts));
+          saveToStorage();
+          pts = [];
+          drawAll();
+        }
+      });
 
-    renderBrowser();
+      function renderStamps() {
+        stampItemsEl.innerHTML = "";
+        const list = stamps.filter(function (s) { return s.cat === cat; });
+        if (list.length && !list.some(function (s) { return s.id === selectedStampId; })) {
+          selectedStampId = list[0].id;
+        }
+        list.forEach(function (s) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = s.name + (s.flipped ? " (反転)" : "");
+          if (s.id === selectedStampId) btn.classList.add("active");
+          btn.addEventListener("click", function () {
+            selectedStampId = s.id;
+            renderStamps();
+            statusEl.textContent = "選択中の記号: " + s.name;
+          });
+          stampItemsEl.appendChild(btn);
+        });
+      }
+
+      document.querySelectorAll(".cat-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          cat = btn.getAttribute("data-cat");
+          document.querySelectorAll(".cat-btn").forEach(function (b) { b.classList.remove("active"); });
+          btn.classList.add("active");
+          renderStamps();
+          statusEl.textContent = "区分を変更しました: " + btn.textContent;
+        });
+      });
+
+      document.getElementById("b-flip").addEventListener("click", function () {
+        const st = stamps.find(function (s) { return s.id === selectedStampId; });
+        if (!st) return;
+        st.flipped = !st.flipped;
+        renderStamps();
+        statusEl.textContent = "「" + st.name + "」を上下反転しました";
+      });
+
+      document.getElementById("b-add-stamp").addEventListener("click", function () {
+        const name = window.prompt("追加する記号名を入力してください", "新記号");
+        if (!name) return;
+        const newId = "st_" + Date.now();
+        stamps.push({ id: newId, name: name.trim(), kind: "panel", cat: cat, flipped: false });
+        selectedStampId = newId;
+        renderStamps();
+        statusEl.textContent = "記号「" + name.trim() + "」を追加しました";
+      });
+
+      document.getElementById("b-del-stamp").addEventListener("click", function () {
+        stamps = stamps.filter(function (s) { return s.id !== selectedStampId; });
+        renderStamps();
+        statusEl.textContent = "選択中の記号を削除しました";
+      });
+
+      function setTool(next) {
+        tool = next;
+        ["t-pen", "t-stamp", "t-dim", "t-eraser"].forEach(function (id) {
+          document.getElementById(id).classList.remove("active");
+        });
+        document.getElementById("t-" + next).classList.add("active");
+        stampPanel.classList.toggle("hidden", next !== "stamp");
+        statusEl.textContent = "モード切替: " + next;
+      }
+
+      document.getElementById("t-pen").addEventListener("click", function () { setTool("pen"); });
+      document.getElementById("t-stamp").addEventListener("click", function () { setTool("stamp"); });
+      document.getElementById("t-dim").addEventListener("click", function () { setTool("dim"); });
+      document.getElementById("t-eraser").addEventListener("click", function () { setTool("eraser"); });
+
+      document.getElementById("t-shape").addEventListener("click", function () {
+        autoShape = !autoShape;
+        this.textContent = autoShape ? "図形認識: ON" : "図形認識: OFF";
+        this.classList.toggle("on", autoShape);
+      });
+
+      document.querySelectorAll(".color-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll(".color-btn").forEach(function (b) { b.classList.remove("active"); });
+          btn.classList.add("active");
+          color = btn.getAttribute("data-c");
+        });
+      });
+
+      document.querySelectorAll(".w-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll(".w-btn").forEach(function (b) { b.classList.remove("active"); });
+          btn.classList.add("active");
+          width = parseFloat(btn.getAttribute("data-w")) || 2.5;
+        });
+      });
+
+      document.getElementById("b-undo").addEventListener("click", function () {
+        const p = page();
+        if (!p.undo.length) return;
+        p.redo.push(JSON.stringify(p.els));
+        p.els = JSON.parse(p.undo.pop());
+        saveToStorage();
+        drawAll();
+        syncButtons();
+      });
+
+      document.getElementById("b-redo").addEventListener("click", function () {
+        const p = page();
+        if (!p.redo.length) return;
+        p.undo.push(JSON.stringify(p.els));
+        p.els = JSON.parse(p.redo.pop());
+        saveToStorage();
+        drawAll();
+        syncButtons();
+      });
+
+      document.getElementById("b-clear").addEventListener("click", function () {
+        if (!window.confirm("現在のページを全消去しますか？")) return;
+        saveUndo();
+        page().els = [];
+        saveToStorage();
+        drawAll();
+        statusEl.textContent = "全消去しました";
+      });
+
+      document.getElementById("p-prev").addEventListener("click", function () {
+        const idx = pageIdx();
+        if (idx > 0) { setPageIdx(idx - 1); layoutCanvas(); syncButtons(); }
+      });
+
+      document.getElementById("p-next").addEventListener("click", function () {
+        const idx = pageIdx();
+        if (idx < pages().length - 1) { setPageIdx(idx + 1); layoutCanvas(); syncButtons(); }
+      });
+
+      document.getElementById("p-add").addEventListener("click", function () {
+        const list = pages();
+        const idx = pageIdx();
+        list.splice(idx + 1, 0, { orient: page().orient, els: [], undo: [], redo: [] });
+        folderPageIdxMap[currentFolderId] = idx + 1;
+        saveToStorage();
+        layoutCanvas();
+        syncButtons();
+      });
+
+      document.getElementById("p-dup").addEventListener("click", function () {
+        const list = pages();
+        const idx = pageIdx();
+        const src = page();
+        list.splice(idx + 1, 0, { orient: src.orient, els: JSON.parse(JSON.stringify(src.els)), undo: [], redo: [] });
+        folderPageIdxMap[currentFolderId] = idx + 1;
+        saveToStorage();
+        layoutCanvas();
+        syncButtons();
+      });
+
+      document.getElementById("p-del").addEventListener("click", function () {
+        const list = pages();
+        if (list.length <= 1) return;
+        let idx = pageIdx();
+        list.splice(idx, 1);
+        if (idx >= list.length) idx = list.length - 1;
+        folderPageIdxMap[currentFolderId] = idx;
+        saveToStorage();
+        layoutCanvas();
+        syncButtons();
+      });
+
+      document.getElementById("z-in").addEventListener("click", function () {
+        zoom = Math.min(3.0, Math.round((zoom + 0.25) * 100) / 100);
+        layoutCanvas();
+        syncButtons();
+        statusEl.textContent = "拡大: " + Math.round(zoom * 100) + "%";
+      });
+
+      document.getElementById("z-out").addEventListener("click", function () {
+        zoom = Math.max(0.5, Math.round((zoom - 0.25) * 100) / 100);
+        layoutCanvas();
+        syncButtons();
+        statusEl.textContent = "縮小: " + Math.round(zoom * 100) + "%";
+      });
+
+      document.getElementById("z-reset").addEventListener("click", function () {
+        zoom = 1.0;
+        workspace.scrollLeft = 0;
+        workspace.scrollTop = 0;
+        layoutCanvas();
+        syncButtons();
+        statusEl.textContent = "100%にリセットしました";
+      });
+
+      document.getElementById("b-orient").addEventListener("click", function () {
+        page().orient = page().orient === "portrait" ? "landscape" : "portrait";
+        saveToStorage();
+        layoutCanvas();
+        syncButtons();
+      });
+
+      document.getElementById("b-grid").addEventListener("click", function () {
+        showGrid = !showGrid;
+        this.textContent = showGrid ? "方眼: ON" : "方眼: OFF";
+        this.classList.toggle("on", showGrid);
+        drawAll();
+      });
+
+      document.getElementById("b-grid-exp").addEventListener("click", function () {
+        exportGrid = !exportGrid;
+        this.textContent = exportGrid ? "出力方眼: ON" : "出力方眼: OFF";
+        this.classList.toggle("on", exportGrid);
+      });
+
+      function openOutputPreview(modeLabel, targetPages) {
+        const printArea = document.getElementById("print-area");
+        previewBody.innerHTML = "";
+        printArea.innerHTML = "";
+        previewTitle.textContent = modeLabel + "（" + currentFolderObj().name + " / " + targetPages.length + "ページ）";
+
+        targetPages.forEach(function (p, i) {
+          const off = document.createElement("canvas");
+          renderPage(p, off, exportGrid);
+          const dataUrl = off.toDataURL("image/png");
+
+          const card = document.createElement("div");
+          card.className = "preview-card";
+
+          const label = document.createElement("div");
+          label.className = "preview-page-label";
+          label.textContent = (i + 1) + " ページ目（" + (p.orient === "portrait" ? "A4縦" : "A4横") + "）";
+
+          const img = document.createElement("img");
+          img.src = dataUrl;
+          img.alt = (i + 1) + "ページ目";
+
+          card.appendChild(label);
+          card.appendChild(img);
+          previewBody.appendChild(card);
+
+          const pDiv = document.createElement("div");
+          pDiv.className = "p-page";
+          const pImg = document.createElement("img");
+          pImg.src = dataUrl;
+          pDiv.appendChild(pImg);
+          printArea.appendChild(pDiv);
+        });
+
+        previewOverlay.classList.add("open");
+        previewBody.scrollTop = 0;
+        statusEl.textContent = modeLabel + "を表示中（「← 戻る」で編集画面へ戻れます）";
+      }
+
+      document.getElementById("b-png").addEventListener("click", function () {
+        openOutputPreview("PNG画像プレビュー（長押しで画像保存）", [page()]);
+      });
+
+      document.getElementById("b-pdf").addEventListener("click", function () {
+        openOutputPreview("PDF出力プレビュー", pages());
+      });
+
+      previewPrintBtn.addEventListener("click", function () {
+        window.print();
+      });
+
+      document.getElementById("preview-back").addEventListener("click", function () {
+        previewOverlay.classList.remove("open");
+        statusEl.textContent = "図面編集画面に戻りました";
+      });
+
+      window.addEventListener("resize", layoutCanvas);
+      updateFolderBadge();
+      renderStamps();
+      layoutCanvas();
+      syncButtons();
+      statusEl.textContent = "準備完了（フォルダ: " + currentFolderObj().name + " / A4横）";
+    })();
   </script>
 </body>
 </html>
